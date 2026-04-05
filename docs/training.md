@@ -8,7 +8,7 @@ SemanticGallery has two training paths:
 ## Default Path: Gallery-Specific Adaptation
 
 ```bash
-PRIVATE_GALLERY_PATH=/absolute/path/to/gallery ./scripts/prepare_data.sh
+PRIVATE_GALLERY_DIR=/absolute/path/to/gallery ./scripts/prepare_data.sh
 ./scripts/adapt_best.sh
 ```
 
@@ -49,7 +49,7 @@ The differences are small, but `0.30 / 0.15` gave the lowest validation loss in 
 ## Full Retraining
 
 ```bash
-PREPARE_PUBLIC_DATA=1 PRIVATE_GALLERY_PATH=/absolute/path/to/gallery ./scripts/prepare_data.sh
+PREPARE_PUBLIC_DATA=1 PRIVATE_GALLERY_DIR=/absolute/path/to/gallery ./scripts/prepare_data.sh
 ./scripts/train_best.sh
 ```
 

@@ -2,24 +2,24 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PY="$ROOT/.venv/bin/python"
-MLX_MODEL_DIR="$ROOT/.cache/mlx/siglip2-base-patch16-224-f32"
-LOCAL_STAGE1_WEIGHTS="$ROOT/logs/semanticgallery_public_stage1/weights.safetensors"
-LOCAL_FINAL_WEIGHTS="$ROOT/logs/semanticgallery_private_data_adapted/weights.safetensors"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PYTHON_BIN_PATH="$ROOT_DIR/.venv/bin/python"
+MLX_MODEL_DIR="$ROOT_DIR/.cache/mlx/siglip2-base-patch16-224-f32"
+LOCAL_STAGE1_WEIGHTS_FILE_PATH="$ROOT_DIR/logs/semanticgallery_public_stage1/weights.safetensors"
+LOCAL_FINAL_WEIGHTS_FILE_PATH="$ROOT_DIR/logs/semanticgallery_private_data_adapted/weights.safetensors"
 PUBLISHED_STAGE1_REPO_ID="Lucas20250626/semanticgallery-mlx-siglip2-stage1"
 PUBLISHED_STAGE1_REVISION="main"
-PUBLISHED_STAGE1_CACHE_DIR="$ROOT/.cache/semanticgallery/stage1"
-PUBLISHED_STAGE1_WEIGHTS="$PUBLISHED_STAGE1_CACHE_DIR/weights.safetensors"
-PUBLISHED_STAGE1_SUMMARY="$PUBLISHED_STAGE1_CACHE_DIR/summary.json"
+PUBLISHED_STAGE1_CACHE_DIR="$ROOT_DIR/.cache/semanticgallery/stage1"
+PUBLISHED_STAGE1_WEIGHTS_FILE_PATH="$PUBLISHED_STAGE1_CACHE_DIR/weights.safetensors"
+PUBLISHED_STAGE1_SUMMARY_FILE_PATH="$PUBLISHED_STAGE1_CACHE_DIR/summary.json"
 PUBLISHED_STAGE2_PUBLIC_ANCHOR_REPO_ID="Lucas20250626/semanticgallery-stage2-public-anchor"
 PUBLISHED_STAGE2_PUBLIC_ANCHOR_REVISION="main"
-PUBLISHED_STAGE2_PUBLIC_ANCHOR_CACHE_DIR="$ROOT/.cache/semanticgallery/stage2_public_anchor"
-PUBLISHED_STAGE2_PUBLIC_ANCHOR_ARCHIVE="$PUBLISHED_STAGE2_PUBLIC_ANCHOR_CACHE_DIR/semanticgallery-stage2-public-anchor.tar.gz"
-PUBLISHED_STAGE2_PUBLIC_ANCHOR_METADATA="$PUBLISHED_STAGE2_PUBLIC_ANCHOR_CACHE_DIR/sample_info.json"
-PUBLISHED_STAGE2_PUBLIC_ANCHOR_ROOT="$PUBLISHED_STAGE2_PUBLIC_ANCHOR_CACHE_DIR/extracted"
-PUBLISHED_STAGE2_PUBLIC_ANCHOR_FLICKR_DIR="$PUBLISHED_STAGE2_PUBLIC_ANCHOR_ROOT/flickr30k"
-PUBLISHED_STAGE2_PUBLIC_ANCHOR_SCREEN2WORDS_MANIFEST="$PUBLISHED_STAGE2_PUBLIC_ANCHOR_ROOT/screen2words/manifest.jsonl"
+PUBLISHED_STAGE2_PUBLIC_ANCHOR_CACHE_DIR="$ROOT_DIR/.cache/semanticgallery/stage2_public_anchor"
+PUBLISHED_STAGE2_PUBLIC_ANCHOR_ARCHIVE_FILE_PATH="$PUBLISHED_STAGE2_PUBLIC_ANCHOR_CACHE_DIR/semanticgallery-stage2-public-anchor.tar.gz"
+PUBLISHED_STAGE2_PUBLIC_ANCHOR_METADATA_FILE_PATH="$PUBLISHED_STAGE2_PUBLIC_ANCHOR_CACHE_DIR/sample_info.json"
+PUBLISHED_STAGE2_PUBLIC_ANCHOR_ROOT_DIR="$PUBLISHED_STAGE2_PUBLIC_ANCHOR_CACHE_DIR/extracted"
+PUBLISHED_STAGE2_PUBLIC_ANCHOR_FLICKR_DIR="$PUBLISHED_STAGE2_PUBLIC_ANCHOR_ROOT_DIR/flickr30k"
+PUBLISHED_STAGE2_PUBLIC_ANCHOR_SCREEN2WORDS_MANIFEST_FILE_PATH="$PUBLISHED_STAGE2_PUBLIC_ANCHOR_ROOT_DIR/screen2words/manifest.jsonl"
 
 timestamp() {
   date '+%H:%M:%S'
@@ -44,15 +44,15 @@ require_uv() {
 
 ensure_env() {
   require_uv
-  if [[ ! -x "$PY" ]]; then
+  if [[ ! -x "$PYTHON_BIN_PATH" ]]; then
     log_step "Creating Python environment"
-    uv venv "$ROOT/.venv" --python 3.12
+    uv venv "$ROOT_DIR/.venv" --python 3.12
   fi
-  if ! "$PY" - <<'PY' >/dev/null 2>&1; then
+  if ! "$PYTHON_BIN_PATH" - <<'PY' >/dev/null 2>&1; then
 import datasets, fastapi, huggingface_hub, jinja2, mlx, mlx_embeddings, pillow_heif, tqdm, uvicorn
 PY
     log_step "Installing Python dependencies"
-    uv pip install --python "$PY" -r "$ROOT/requirements.txt"
+    uv pip install --python "$PYTHON_BIN_PATH" -r "$ROOT_DIR/requirements.txt"
   fi
 }
 
@@ -60,11 +60,11 @@ ensure_mlx_model() {
   ensure_env
   if [[ ! -f "$MLX_MODEL_DIR/config.json" ]]; then
     log_step "Preparing MLX SigLIP2 model cache"
-    "$PY" - <<PY
+    "$PYTHON_BIN_PATH" - <<PY
 from pathlib import Path
 from mlx_embeddings.convert import convert
 
-root = Path("${ROOT}")
+root = Path("${ROOT_DIR}")
 model_dir = root / ".cache" / "mlx" / "siglip2-base-patch16-224-f32"
 model_dir.parent.mkdir(parents=True, exist_ok=True)
 convert(
@@ -97,12 +97,12 @@ ensure_port_free() {
 
 ensure_published_stage1_weights() {
   ensure_env
-  if [[ ! -f "$PUBLISHED_STAGE1_WEIGHTS" ]]; then
+  if [[ ! -f "$PUBLISHED_STAGE1_WEIGHTS_FILE_PATH" ]]; then
     log_step "Downloading published Stage 1 weights"
     log_kv "repo_id=$PUBLISHED_STAGE1_REPO_ID"
     log_kv "files=weights.safetensors,summary.json"
     mkdir -p "$PUBLISHED_STAGE1_CACHE_DIR"
-    "$PY" - <<PY
+    "$PYTHON_BIN_PATH" - <<PY
 from pathlib import Path
 import sys
 from huggingface_hub import hf_hub_download
@@ -124,7 +124,7 @@ PY
 
 ensure_published_stage2_public_anchor() {
   ensure_env
-  if [[ -f "$PUBLISHED_STAGE2_PUBLIC_ANCHOR_FLICKR_DIR/captions.txt" && -f "$PUBLISHED_STAGE2_PUBLIC_ANCHOR_SCREEN2WORDS_MANIFEST" ]]; then
+  if [[ -f "$PUBLISHED_STAGE2_PUBLIC_ANCHOR_FLICKR_DIR/captions.txt" && -f "$PUBLISHED_STAGE2_PUBLIC_ANCHOR_SCREEN2WORDS_MANIFEST_FILE_PATH" ]]; then
     log_step "Reusing cached Stage 2 public anchor"
     log_kv "cache_dir=$PUBLISHED_STAGE2_PUBLIC_ANCHOR_CACHE_DIR"
     return
@@ -134,7 +134,7 @@ ensure_published_stage2_public_anchor() {
   log_kv "repo_id=$PUBLISHED_STAGE2_PUBLIC_ANCHOR_REPO_ID"
   log_kv "files=semanticgallery-stage2-public-anchor.tar.gz,sample_info.json"
   mkdir -p "$PUBLISHED_STAGE2_PUBLIC_ANCHOR_CACHE_DIR"
-  "$PY" - <<PY
+  "$PYTHON_BIN_PATH" - <<PY
 import shutil
 import sys
 import tarfile
@@ -143,9 +143,9 @@ from pathlib import Path
 from huggingface_hub import hf_hub_download
 
 cache_dir = Path("${PUBLISHED_STAGE2_PUBLIC_ANCHOR_CACHE_DIR}")
-archive_path = Path("${PUBLISHED_STAGE2_PUBLIC_ANCHOR_ARCHIVE}")
-metadata_path = Path("${PUBLISHED_STAGE2_PUBLIC_ANCHOR_METADATA}")
-extract_root = Path("${PUBLISHED_STAGE2_PUBLIC_ANCHOR_ROOT}")
+archive_path = Path("${PUBLISHED_STAGE2_PUBLIC_ANCHOR_ARCHIVE_FILE_PATH}")
+metadata_path = Path("${PUBLISHED_STAGE2_PUBLIC_ANCHOR_METADATA_FILE_PATH}")
+extract_root = Path("${PUBLISHED_STAGE2_PUBLIC_ANCHOR_ROOT_DIR}")
 tmp_root = cache_dir / "extracting"
 
 cache_dir.mkdir(parents=True, exist_ok=True)
@@ -180,118 +180,106 @@ PY
 }
 
 resolve_stage1_weights_file() {
-  local explicit="${1:-}"
-  if [[ -n "$explicit" ]]; then
-    printf '%s\n' "$explicit"
-    return
-  fi
-  if [[ -f "$LOCAL_STAGE1_WEIGHTS" ]]; then
-    printf '%s\n' "$LOCAL_STAGE1_WEIGHTS"
-    return
-  fi
-  if [[ -f "$PUBLISHED_STAGE1_WEIGHTS" ]]; then
-    printf '%s\n' "$PUBLISHED_STAGE1_WEIGHTS"
+  local preferred_file_path="${1:-$LOCAL_STAGE1_WEIGHTS_FILE_PATH}"
+  if [[ -f "$preferred_file_path" ]]; then
+    printf '%s\n' "$preferred_file_path"
     return
   fi
   ensure_published_stage1_weights
-  printf '%s\n' "$PUBLISHED_STAGE1_WEIGHTS"
+  printf '%s\n' "$PUBLISHED_STAGE1_WEIGHTS_FILE_PATH"
 }
 
 resolve_weights_file() {
-  local explicit="${1:-}"
-  if [[ -n "$explicit" ]]; then
-    printf '%s\n' "$explicit"
+  local preferred_file_path="${1:-$LOCAL_FINAL_WEIGHTS_FILE_PATH}"
+  if [[ -f "$preferred_file_path" ]]; then
+    printf '%s\n' "$preferred_file_path"
     return
   fi
-  if [[ -f "$LOCAL_FINAL_WEIGHTS" ]]; then
-    printf '%s\n' "$LOCAL_FINAL_WEIGHTS"
-    return
-  fi
-  printf '%s\n' "$(resolve_stage1_weights_file)"
+  printf '%s\n' "$(resolve_stage1_weights_file "${STAGE1_WEIGHTS_FILE_PATH:-$LOCAL_STAGE1_WEIGHTS_FILE_PATH}")"
 }
 
 prepare_mlx_search_config() {
-  local gallery_path="$1"
-  local config_output="$2"
-  local metadata_manifest="${3:-}"
-  local weights_file="${4:-}"
+  local gallery_dir="$1"
+  local config_file_path="$2"
+  local metadata_manifest_file_path="${3:-}"
+  local weights_file_path="${4:-}"
   local precision="${5:-bfloat16}"
   local gallery_name
-  local embeddings_output
-  local paths_output
-  local skipped_output
-  local legacy_embeddings_output
-  local legacy_paths_output
-  local legacy_skipped_output
+  local embeddings_file_path
+  local indexed_paths_file_path
+  local skipped_images_file_path
+  local legacy_embeddings_file_path
+  local legacy_indexed_paths_file_path
+  local legacy_skipped_images_file_path
   local encode_cmd
   local create_cmd
 
   ensure_mlx_model
 
-  gallery_path="$(cd "$gallery_path" && pwd)"
-  gallery_name="$(basename "$gallery_path")"
-  embeddings_output="$ROOT/deployment/${gallery_name}_mlx_siglip2_embeddings.npy"
-  paths_output="$ROOT/deployment/${gallery_name}_mlx_siglip2.paths.txt"
-  skipped_output="$ROOT/deployment/${gallery_name}_mlx_siglip2_skipped.json"
-  legacy_embeddings_output="$ROOT/deployment/${gallery_name}_siglip2_embeddings.npy"
-  legacy_paths_output="$ROOT/deployment/${gallery_name}_siglip2.paths.txt"
-  legacy_skipped_output="$ROOT/deployment/${gallery_name}_siglip2_skipped.json"
+  gallery_dir="$(cd "$gallery_dir" && pwd)"
+  gallery_name="$(basename "$gallery_dir")"
+  embeddings_file_path="$ROOT_DIR/deployment/${gallery_name}_mlx_siglip2_embeddings.npy"
+  indexed_paths_file_path="$ROOT_DIR/deployment/${gallery_name}_mlx_siglip2.paths.txt"
+  skipped_images_file_path="$ROOT_DIR/deployment/${gallery_name}_mlx_siglip2_skipped.json"
+  legacy_embeddings_file_path="$ROOT_DIR/deployment/${gallery_name}_siglip2_embeddings.npy"
+  legacy_indexed_paths_file_path="$ROOT_DIR/deployment/${gallery_name}_siglip2.paths.txt"
+  legacy_skipped_images_file_path="$ROOT_DIR/deployment/${gallery_name}_siglip2_skipped.json"
 
-  if [[ "${FORCE:-0}" != "1" && -z "$weights_file" && -f "$legacy_embeddings_output" && -f "$legacy_paths_output" && -f "$legacy_skipped_output" ]]; then
-    embeddings_output="$legacy_embeddings_output"
-    paths_output="$legacy_paths_output"
-    skipped_output="$legacy_skipped_output"
+  if [[ "${FORCE:-0}" != "1" && -z "$weights_file_path" && -f "$legacy_embeddings_file_path" && -f "$legacy_indexed_paths_file_path" && -f "$legacy_skipped_images_file_path" ]]; then
+    embeddings_file_path="$legacy_embeddings_file_path"
+    indexed_paths_file_path="$legacy_indexed_paths_file_path"
+    skipped_images_file_path="$legacy_skipped_images_file_path"
   fi
 
   log_step "Preparing gallery bank"
-  log_kv "gallery_path=$gallery_path"
+  log_kv "gallery_dir=$gallery_dir"
   log_kv "precision=$precision"
-  log_kv "model_path=$MLX_MODEL_DIR"
-  if [[ -n "$weights_file" && -f "$weights_file" ]]; then
-    log_kv "weights_file=$weights_file"
+  log_kv "model_dir=$MLX_MODEL_DIR"
+  if [[ -n "$weights_file_path" && -f "$weights_file_path" ]]; then
+    log_kv "weights_file_path=$weights_file_path"
   else
-    log_kv "weights_file=none"
+    log_kv "weights_file_path=none"
   fi
 
-  if [[ "${FORCE:-0}" == "1" || ! -f "$embeddings_output" || ! -f "$paths_output" || ! -f "$skipped_output" ]]; then
+  if [[ "${FORCE:-0}" == "1" || ! -f "$embeddings_file_path" || ! -f "$indexed_paths_file_path" || ! -f "$skipped_images_file_path" ]]; then
     log_step "Encoding gallery images"
     encode_cmd=(
-      "$PY" "$ROOT/deployment/encode_gallery.py"
-      --gallery-path "$gallery_path"
+      "$PYTHON_BIN_PATH" "$ROOT_DIR/deployment/encode_gallery.py"
+      --gallery-path "$gallery_dir"
       --model-path "$MLX_MODEL_DIR"
       --precision "$precision"
       --batch-size "${ENCODE_BATCH_SIZE:-8}"
-      --embeddings-output "$embeddings_output"
-      --paths-output "$paths_output"
-      --skipped-output "$skipped_output"
+      --embeddings-output "$embeddings_file_path"
+      --paths-output "$indexed_paths_file_path"
+      --skipped-output "$skipped_images_file_path"
     )
-    if [[ -n "$weights_file" && -f "$weights_file" ]]; then
-      encode_cmd+=(--weights-file "$weights_file")
+    if [[ -n "$weights_file_path" && -f "$weights_file_path" ]]; then
+      encode_cmd+=(--weights-file "$weights_file_path")
     fi
     "${encode_cmd[@]}"
   else
     log_step "Reusing existing gallery bank"
-    log_kv "embeddings_file=$embeddings_output"
-    log_kv "indexed_paths_file=$paths_output"
-    log_kv "skipped_images_file=$skipped_output"
+    log_kv "embeddings_file_path=$embeddings_file_path"
+    log_kv "indexed_paths_file_path=$indexed_paths_file_path"
+    log_kv "skipped_images_file_path=$skipped_images_file_path"
   fi
 
   log_step "Writing search config"
   create_cmd=(
-    "$PY" "$ROOT/deployment/create_index.py"
-    --gallery-path "$gallery_path"
+    "$PYTHON_BIN_PATH" "$ROOT_DIR/deployment/create_index.py"
+    --gallery-path "$gallery_dir"
     --model-path "$MLX_MODEL_DIR"
     --precision "$precision"
-    --embeddings-file "$embeddings_output"
-    --indexed-paths-file "$paths_output"
-    --skipped-file "$skipped_output"
-    --config-output "$config_output"
+    --embeddings-file "$embeddings_file_path"
+    --indexed-paths-file "$indexed_paths_file_path"
+    --skipped-file "$skipped_images_file_path"
+    --config-output "$config_file_path"
   )
-  if [[ -n "$weights_file" && -f "$weights_file" ]]; then
-    create_cmd+=(--weights-file "$weights_file")
+  if [[ -n "$weights_file_path" && -f "$weights_file_path" ]]; then
+    create_cmd+=(--weights-file "$weights_file_path")
   fi
-  if [[ -n "$metadata_manifest" && -f "$metadata_manifest" ]]; then
-    create_cmd+=(--metadata-manifest "$metadata_manifest")
+  if [[ -n "$metadata_manifest_file_path" && -f "$metadata_manifest_file_path" ]]; then
+    create_cmd+=(--metadata-manifest "$metadata_manifest_file_path")
   fi
   "${create_cmd[@]}"
 }

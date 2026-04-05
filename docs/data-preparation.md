@@ -8,7 +8,7 @@ SemanticGallery has two data-preparation paths:
 ## Default Path
 
 ```bash
-PRIVATE_GALLERY_PATH=/absolute/path/to/gallery ./scripts/prepare_data.sh
+PRIVATE_GALLERY_DIR=/absolute/path/to/gallery ./scripts/prepare_data.sh
 ```
 
 This command scans the user gallery and writes:
@@ -61,7 +61,7 @@ The default Stage 2 path uses that small public reference set to keep a public t
 ## Full Retraining Preparation
 
 ```bash
-PREPARE_PUBLIC_DATA=1 PRIVATE_GALLERY_PATH=/absolute/path/to/gallery ./scripts/prepare_data.sh
+PREPARE_PUBLIC_DATA=1 PRIVATE_GALLERY_DIR=/absolute/path/to/gallery ./scripts/prepare_data.sh
 ```
 
 This path prepares the public training data for Stage 1 and the local files built from the user's gallery:

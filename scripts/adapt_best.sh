@@ -7,12 +7,12 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_env.sh"
 ensure_mlx_model
 ensure_published_stage2_public_anchor
 
-require_file "$ROOT/datasets/private_gallery_local/private_adapt_data.jsonl"
+require_file "$ROOT_DIR/datasets/private_gallery_local/private_adapt_data.jsonl"
 require_file "$PUBLISHED_STAGE2_PUBLIC_ANCHOR_FLICKR_DIR/captions.txt"
-require_file "$PUBLISHED_STAGE2_PUBLIC_ANCHOR_SCREEN2WORDS_MANIFEST"
+require_file "$PUBLISHED_STAGE2_PUBLIC_ANCHOR_SCREEN2WORDS_MANIFEST_FILE_PATH"
 
 FINAL_RUN_NAME="${FINAL_RUN_NAME:-semanticgallery_private_data_adapted}"
-STAGE1_WEIGHTS="${STAGE1_WEIGHTS:-}"
+STAGE1_WEIGHTS_FILE_PATH="${STAGE1_WEIGHTS_FILE_PATH:-$LOCAL_STAGE1_WEIGHTS_FILE_PATH}"
 MAX_EPOCHS_STAGE2="${MAX_EPOCHS_STAGE2:-1}"
 TRAIN_BATCH_SIZE="${TRAIN_BATCH_SIZE:-4}"
 TRAIN_PRECISION="${TRAIN_PRECISION:-bfloat16}"
@@ -26,9 +26,9 @@ PRIVATE_DISTILL_WEIGHT="${PRIVATE_DISTILL_WEIGHT:-0.15}"
 MAX_TRAIN_STEPS="${MAX_TRAIN_STEPS:-}"
 MAX_VAL_STEPS="${MAX_VAL_STEPS:-}"
 
-FINAL_RUN_DIR="$ROOT/logs/$FINAL_RUN_NAME"
-FINAL_MANIFESTS="$PUBLISHED_STAGE2_PUBLIC_ANCHOR_SCREEN2WORDS_MANIFEST,$ROOT/datasets/private_gallery_local/private_adapt_data.jsonl"
-BASE_STAGE1_WEIGHTS="$(resolve_stage1_weights_file "$STAGE1_WEIGHTS")"
+FINAL_RUN_DIR="$ROOT_DIR/logs/$FINAL_RUN_NAME"
+FINAL_MANIFEST_PATHS="$PUBLISHED_STAGE2_PUBLIC_ANCHOR_SCREEN2WORDS_MANIFEST_FILE_PATH,$ROOT_DIR/datasets/private_gallery_local/private_adapt_data.jsonl"
+BASE_STAGE1_WEIGHTS_FILE_PATH="$(resolve_stage1_weights_file "$STAGE1_WEIGHTS_FILE_PATH")"
 
 common_args=(
   --model-path "$MLX_MODEL_DIR"
@@ -47,15 +47,15 @@ if [[ -n "$MAX_VAL_STEPS" ]]; then
 fi
 
 log_step "Running Stage 2 adaptation"
-log_kv "stage1_weights=$BASE_STAGE1_WEIGHTS"
+log_kv "stage1_weights_file_path=$BASE_STAGE1_WEIGHTS_FILE_PATH"
 log_kv "run_dir=$FINAL_RUN_DIR"
 log_kv "public_anchor_flickr=$PUBLISHED_STAGE2_PUBLIC_ANCHOR_FLICKR_DIR"
-log_kv "public_anchor_manifest=$PUBLISHED_STAGE2_PUBLIC_ANCHOR_SCREEN2WORDS_MANIFEST"
+log_kv "public_anchor_manifest_file_path=$PUBLISHED_STAGE2_PUBLIC_ANCHOR_SCREEN2WORDS_MANIFEST_FILE_PATH"
 
-"$PY" "$ROOT/tools/train_mlx_siglip2.py" \
+"$PYTHON_BIN_PATH" "$ROOT_DIR/tools/train_mlx_siglip2.py" \
   "${common_args[@]}" \
-  --init-weights "$BASE_STAGE1_WEIGHTS" \
-  --manifest-paths "$FINAL_MANIFESTS" \
+  --init-weights "$BASE_STAGE1_WEIGHTS_FILE_PATH" \
+  --manifest-paths "$FINAL_MANIFEST_PATHS" \
   --epochs "$MAX_EPOCHS_STAGE2" \
   --lr "$LR_STAGE2" \
   --freeze-text-tower \
@@ -66,6 +66,6 @@ log_kv "public_anchor_manifest=$PUBLISHED_STAGE2_PUBLIC_ANCHOR_SCREEN2WORDS_MANI
   --private-distill-weight "$PRIVATE_DISTILL_WEIGHT" \
   --run-dir "$FINAL_RUN_DIR"
 
-FINAL_WEIGHTS="$FINAL_RUN_DIR/weights.safetensors"
-require_file "$FINAL_WEIGHTS"
-printf 'weights=%s\n' "$FINAL_WEIGHTS"
+FINAL_WEIGHTS_FILE_PATH="$FINAL_RUN_DIR/weights.safetensors"
+require_file "$FINAL_WEIGHTS_FILE_PATH"
+printf 'weights=%s\n' "$FINAL_WEIGHTS_FILE_PATH"

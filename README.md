@@ -19,7 +19,7 @@ SemanticGallery is a local-first semantic image search app for Apple Silicon. Po
 ## Quick Start
 
 ```bash
-GALLERY_PATH=/absolute/path/to/gallery ./scripts/quickstart.sh
+GALLERY_DIR=/absolute/path/to/gallery ./scripts/quickstart.sh
 ```
 
 On the first run, SemanticGallery:
@@ -46,7 +46,7 @@ If startup fails, `quickstart.sh` exits with a non-zero status and leaves the fu
 Later runs reuse the existing gallery-specific adaptation and the existing gallery index. Deletes from the web UI update the local index immediately. Rebuild the gallery index with `FORCE=1` whenever gallery files change or whenever the adaptation step reruns with different local data or a different checkpoint:
 
 ```bash
-FORCE=1 GALLERY_PATH=/absolute/path/to/gallery ./scripts/quickstart.sh
+FORCE=1 GALLERY_DIR=/absolute/path/to/gallery ./scripts/quickstart.sh
 ```
 
 ## What Gets Written

@@ -290,7 +290,7 @@ def main():
     if expects_private_data(manifest_paths) and not private_train_records:
         raise ValueError(
             "Private adaptation manifest was provided, but no private rows were loaded. "
-            "Rebuild private_data with scripts/prepare_data.sh and a valid PRIVATE_GALLERY_PATH."
+            "Rebuild private_data with scripts/prepare_data.sh and a valid PRIVATE_GALLERY_DIR."
         )
 
     print("training_start=true", flush=True)

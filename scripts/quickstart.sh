@@ -4,47 +4,47 @@ set -euo pipefail
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_env.sh"
 
-GALLERY_PATH="${GALLERY_PATH:-${1:-}}"
-FINAL_RUN_DIR="$ROOT/logs/semanticgallery_private_data_adapted"
-FINAL_WEIGHTS="$FINAL_RUN_DIR/weights.safetensors"
-QUICKSTART_STATE_FILE="$FINAL_RUN_DIR/quickstart_state.json"
-PRIVATE_MANIFEST="$ROOT/datasets/private_gallery_local/private_adapt_data.jsonl"
-STAGE1_WEIGHTS="${STAGE1_WEIGHTS:-}"
+GALLERY_DIR="${GALLERY_DIR:-${1:-}}"
+FINAL_RUN_DIR="$ROOT_DIR/logs/semanticgallery_private_data_adapted"
+FINAL_WEIGHTS_FILE_PATH="$FINAL_RUN_DIR/weights.safetensors"
+QUICKSTART_STATE_FILE_PATH="$FINAL_RUN_DIR/quickstart_state.json"
+PRIVATE_MANIFEST_FILE_PATH="$ROOT_DIR/datasets/private_gallery_local/private_adapt_data.jsonl"
+STAGE1_WEIGHTS_FILE_PATH="${STAGE1_WEIGHTS_FILE_PATH:-$LOCAL_STAGE1_WEIGHTS_FILE_PATH}"
 HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-36168}"
-CONFIG_OUTPUT="${CONFIG_OUTPUT:-$ROOT/deployment/search_config_gallery_mlx.json}"
-METADATA_MANIFEST="${METADATA_MANIFEST:-$ROOT/datasets/private_gallery_local/full_manifest.jsonl}"
+CONFIG_FILE_PATH="${CONFIG_FILE_PATH:-$ROOT_DIR/deployment/search_config_gallery_mlx.json}"
+METADATA_MANIFEST_FILE_PATH="${METADATA_MANIFEST_FILE_PATH:-$ROOT_DIR/datasets/private_gallery_local/full_manifest.jsonl}"
 MODEL_PRECISION="${MODEL_PRECISION:-bfloat16}"
-RUNTIME_DIR="${RUNTIME_DIR:-$ROOT/logs/runtime}"
-LOG_FILE="${LOG_FILE:-$RUNTIME_DIR/semanticgallery_${PORT}.log}"
-PID_FILE="${PID_FILE:-$RUNTIME_DIR/semanticgallery_${PORT}.pid}"
+RUNTIME_DIR="${RUNTIME_DIR:-$ROOT_DIR/logs/runtime}"
+LOG_FILE_PATH="${LOG_FILE_PATH:-$RUNTIME_DIR/semanticgallery_${PORT}.log}"
+PID_FILE_PATH="${PID_FILE_PATH:-$RUNTIME_DIR/semanticgallery_${PORT}.pid}"
 STARTUP_TIMEOUT_SECONDS="${STARTUP_TIMEOUT_SECONDS:-300}"
 
-[[ -n "$GALLERY_PATH" ]] || die "set GALLERY_PATH to the folder you want to search."
-require_dir "$GALLERY_PATH"
+[[ -n "$GALLERY_DIR" ]] || die "set GALLERY_DIR to the folder you want to search."
+require_dir "$GALLERY_DIR"
 
 ensure_env
 
-resolved_gallery_path="$(cd "$GALLERY_PATH" && pwd)"
-resolved_stage1_weights="$(resolve_stage1_weights_file "$STAGE1_WEIGHTS")"
+resolved_gallery_dir="$(cd "$GALLERY_DIR" && pwd)"
+resolved_stage1_weights_file_path="$(resolve_stage1_weights_file "$STAGE1_WEIGHTS_FILE_PATH")"
 
 log_step "Preparing adaptation data"
-PREPARE_PUBLIC_DATA=0 PRIVATE_GALLERY_PATH="$resolved_gallery_path" "$ROOT/scripts/prepare_data.sh"
+PREPARE_PUBLIC_DATA=0 PRIVATE_GALLERY_DIR="$resolved_gallery_dir" "$ROOT_DIR/scripts/prepare_data.sh"
 
-require_file "$PRIVATE_MANIFEST"
+require_file "$PRIVATE_MANIFEST_FILE_PATH"
 
 current_signature="$(
-  "$PY" - <<PY
+  "$PYTHON_BIN_PATH" - <<PY
 import hashlib
 import json
 from pathlib import Path
 
-gallery_path = Path("${resolved_gallery_path}").resolve().as_posix()
-stage1_weights = Path("${resolved_stage1_weights}").resolve().as_posix()
-manifest = Path("${PRIVATE_MANIFEST}").resolve()
+gallery_dir = Path("${resolved_gallery_dir}").resolve().as_posix()
+stage1_weights = Path("${resolved_stage1_weights_file_path}").resolve().as_posix()
+manifest = Path("${PRIVATE_MANIFEST_FILE_PATH}").resolve()
 payload = {
-    "gallery_path": gallery_path,
-    "stage1_weights": stage1_weights,
+    "gallery_dir": gallery_dir,
+    "stage1_weights_file_path": stage1_weights,
     "manifest_sha1": hashlib.sha1(manifest.read_bytes()).hexdigest(),
 }
 print(json.dumps(payload, sort_keys=True, ensure_ascii=False))
@@ -52,13 +52,13 @@ PY
 )"
 
 stored_signature=""
-if [[ -f "$QUICKSTART_STATE_FILE" ]]; then
+if [[ -f "$QUICKSTART_STATE_FILE_PATH" ]]; then
   stored_signature="$(
-    "$PY" - <<PY
+    "$PYTHON_BIN_PATH" - <<PY
 import json
 from pathlib import Path
 
-state_path = Path("${QUICKSTART_STATE_FILE}")
+state_path = Path("${QUICKSTART_STATE_FILE_PATH}")
 try:
     payload = json.loads(state_path.read_text(encoding="utf-8"))
 except Exception:
@@ -68,65 +68,65 @@ PY
   )"
 fi
 
-if [[ ! -f "$FINAL_WEIGHTS" || "$current_signature" != "$stored_signature" ]]; then
-  STAGE1_WEIGHTS="$resolved_stage1_weights" "$ROOT/scripts/adapt_best.sh"
-  CURRENT_SIGNATURE="$current_signature" "$PY" - <<PY
+if [[ ! -f "$FINAL_WEIGHTS_FILE_PATH" || "$current_signature" != "$stored_signature" ]]; then
+  STAGE1_WEIGHTS_FILE_PATH="$resolved_stage1_weights_file_path" "$ROOT_DIR/scripts/adapt_best.sh"
+  CURRENT_SIGNATURE="$current_signature" "$PYTHON_BIN_PATH" - <<PY
 import json
 import os
 from pathlib import Path
 
-state_path = Path("${QUICKSTART_STATE_FILE}")
+state_path = Path("${QUICKSTART_STATE_FILE_PATH}")
 state_path.parent.mkdir(parents=True, exist_ok=True)
 payload = {
     "signature": os.environ["CURRENT_SIGNATURE"],
-    "gallery_path": "${resolved_gallery_path}",
-    "stage1_weights": "${resolved_stage1_weights}",
-    "final_weights": "${FINAL_WEIGHTS}",
+    "gallery_dir": "${resolved_gallery_dir}",
+    "stage1_weights_file_path": "${resolved_stage1_weights_file_path}",
+    "final_weights_file_path": "${FINAL_WEIGHTS_FILE_PATH}",
 }
 state_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 PY
 else
   log_step "Reusing existing Stage 2 adaptation"
-  log_kv "weights_file=$FINAL_WEIGHTS"
+  log_kv "weights_file_path=$FINAL_WEIGHTS_FILE_PATH"
 fi
 
 mkdir -p "$RUNTIME_DIR"
 
-if [[ -f "$PID_FILE" ]]; then
-  existing_pid="$(tr -d '[:space:]' < "$PID_FILE")"
+if [[ -f "$PID_FILE_PATH" ]]; then
+  existing_pid="$(tr -d '[:space:]' < "$PID_FILE_PATH")"
   if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null; then
     die "SemanticGallery is already running on pid $existing_pid. Stop it first or use a different PORT."
   fi
-  rm -f "$PID_FILE"
+  rm -f "$PID_FILE_PATH"
 fi
 
 log_step "Starting SemanticGallery in background"
 log_kv "host=$HOST"
 log_kv "port=$PORT"
-log_kv "gallery_path=$resolved_gallery_path"
-log_kv "log_file=$LOG_FILE"
-log_kv "pid_file=$PID_FILE"
-"$PY" - <<PY
+log_kv "gallery_dir=$resolved_gallery_dir"
+log_kv "log_file_path=$LOG_FILE_PATH"
+log_kv "pid_file_path=$PID_FILE_PATH"
+"$PYTHON_BIN_PATH" - <<PY
 import os
 import subprocess
 from pathlib import Path
 
-root = Path("${ROOT}")
-log_path = Path("${LOG_FILE}")
-pid_path = Path("${PID_FILE}")
+root_dir = Path("${ROOT_DIR}")
+log_path = Path("${LOG_FILE_PATH}")
+pid_path = Path("${PID_FILE_PATH}")
 log_path.parent.mkdir(parents=True, exist_ok=True)
 
 env = os.environ.copy()
 env.update(
     {
         "PYTHONUNBUFFERED": "1",
-        "GALLERY_PATH": "${resolved_gallery_path}",
+        "GALLERY_DIR": "${resolved_gallery_dir}",
         "HOST": "${HOST}",
         "PORT": "${PORT}",
-        "CONFIG_OUTPUT": "${CONFIG_OUTPUT}",
-        "METADATA_MANIFEST": "${METADATA_MANIFEST}",
+        "CONFIG_FILE_PATH": "${CONFIG_FILE_PATH}",
+        "METADATA_MANIFEST_FILE_PATH": "${METADATA_MANIFEST_FILE_PATH}",
         "MODEL_PRECISION": "${MODEL_PRECISION}",
-        "MODEL_WEIGHTS": "${FINAL_WEIGHTS}",
+        "MODEL_WEIGHTS_FILE_PATH": "${FINAL_WEIGHTS_FILE_PATH}",
         "FORCE": "${FORCE:-0}",
         "ENCODE_BATCH_SIZE": "${ENCODE_BATCH_SIZE:-8}",
     }
@@ -134,8 +134,8 @@ env.update(
 
 with log_path.open("wb") as handle:
     proc = subprocess.Popen(
-        ["/bin/bash", str(root / "scripts" / "deploy_best.sh")],
-        cwd=root.as_posix(),
+        ["/bin/bash", str(root_dir / "scripts" / "deploy_best.sh")],
+        cwd=root_dir.as_posix(),
         env=env,
         stdout=handle,
         stderr=subprocess.STDOUT,
@@ -146,23 +146,23 @@ with log_path.open("wb") as handle:
 pid_path.write_text(f"{proc.pid}\n", encoding="utf-8")
 PY
 
-pid="$(tr -d '[:space:]' < "$PID_FILE")"
+pid="$(tr -d '[:space:]' < "$PID_FILE_PATH")"
 [[ -n "$pid" ]] || die "failed to record SemanticGallery pid"
 
 log_step "Background job started"
 log_kv "pid=$pid"
 log_kv "url=http://$HOST:$PORT"
-log_kv "startup_log=$LOG_FILE"
+log_kv "startup_log=$LOG_FILE_PATH"
 
 log_step "Following startup log"
-"$PY" - <<PY
+"$PYTHON_BIN_PATH" - <<PY
 from pathlib import Path
 import os
 import socket
 import sys
 import time
 
-log_path = Path("${LOG_FILE}")
+log_path = Path("${LOG_FILE_PATH}")
 pid = int("${pid}")
 timeout_seconds = int("${STARTUP_TIMEOUT_SECONDS}")
 ready_marker = "Uvicorn running on http://"

@@ -4,11 +4,30 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{{ title }}</title>
-    <link rel="stylesheet" href="/static/app.css" />
+    <link rel="stylesheet" href="/static/app.css?v={{ static_version }}" />
   </head>
   <body>
     <main class="page">
       <form id="search-form" class="search-bar" autocomplete="off">
+        <input id="image-input" type="file" accept="image/*" hidden />
+        <button id="image-picker-button" type="button" aria-label="选择图片搜索">
+          <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M15 8h.01" />
+            <path d="M4 6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2z" />
+            <path d="M4 15l4 -4c.928 -.893 2.072 -.893 3 0l5 5" />
+            <path d="M14 14l1 -1c.928 -.893 2.072 -.893 3 0l2 2" />
+          </svg>
+        </button>
+        <div id="image-query-chip" class="image-query-chip" hidden>
+          <img id="image-query-preview" class="image-query-preview" alt="" />
+          <span id="image-query-label" class="image-query-label"></span>
+          <button id="image-query-clear" class="image-query-clear" type="button" aria-label="清除图片搜索">
+            <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 6l-12 12" />
+              <path d="M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
         <input
           id="search-input"
           type="search"
@@ -65,6 +84,15 @@
             <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
           </svg>
         </button>
+        <button id="lightbox-similar" class="lightbox-similar" type="button" aria-label="搜索相似图片">
+          <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 7a2 2 0 0 1 2 -2h7a2 2 0 0 1 2 2v7a2 2 0 0 1 -2 2h-7a2 2 0 0 1 -2 -2z" />
+            <path d="M9 10a1.5 1.5 0 1 0 0 -3a1.5 1.5 0 0 0 0 3z" />
+            <path d="M4 12l3 -3l4 4" />
+            <path d="M15.5 15.5l4.5 4.5" />
+            <path d="M17.5 11.5a3 3 0 1 0 0 6a3 3 0 0 0 0 -6z" />
+          </svg>
+        </button>
         <img id="lightbox-image" alt="" />
         <div id="lightbox-meta" class="lightbox-meta" hidden>
           <div class="meta-row">
@@ -89,6 +117,6 @@
       </button>
     </template>
 
-    <script src="/static/app.js" defer></script>
+    <script src="/static/app.js?v={{ static_version }}" defer></script>
   </body>
 </html>

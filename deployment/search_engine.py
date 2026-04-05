@@ -7,13 +7,14 @@ from typing import List, Optional, Tuple
 
 import mlx.core as mx
 import numpy as np
+from PIL import Image
 
 import sys
 
 sys.path.append(Path(__file__).resolve().parents[1].as_posix())
 
 from deployment.search_utils import apply_metadata_boost, is_searchable_query, load_metadata_texts
-from mlx_pipeline import l2_normalize, load_mlx_siglip_model
+from mlx_pipeline import l2_normalize, load_mlx_siglip_model, open_rgb_image
 
 SUPPORTED_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".heic", ".heif"}
 
@@ -49,6 +50,12 @@ class BaseSearchEngine:
     metadata_texts: list[str] | None
 
     def search(self, query_text: str, k: int = 20) -> List[Tuple[str, Optional[str]]]:
+        raise NotImplementedError
+
+    def search_by_image(self, image: Image.Image, k: int = 20) -> List[Tuple[str, Optional[str]]]:
+        raise NotImplementedError
+
+    def search_similar(self, image_path: str | Path, k: int = 20) -> List[Tuple[str, Optional[str]]]:
         raise NotImplementedError
 
     @staticmethod
@@ -205,6 +212,40 @@ class MLXSigLIPSearchEngine(BaseSearchEngine):
             lazy=False,
         )
 
+    def _rank_scores(
+        self,
+        scores: np.ndarray,
+        *,
+        k: int,
+        exclude_index: int | None = None,
+    ) -> List[Tuple[str, Optional[str]]]:
+        if not self.image_paths or k <= 0:
+            return []
+
+        ranked_scores = np.asarray(scores, dtype=np.float32).copy()
+        if exclude_index is not None and 0 <= exclude_index < ranked_scores.shape[0]:
+            ranked_scores[exclude_index] = -np.inf
+
+        finite_count = int(np.isfinite(ranked_scores).sum())
+        if finite_count <= 0:
+            return []
+
+        k = min(k, finite_count)
+        top_indices = np.argpartition(-ranked_scores, k - 1)[:k]
+        top_indices = top_indices[np.argsort(-ranked_scores[top_indices])]
+        return [(self.image_paths[int(index)], None) for index in top_indices]
+
+    def _find_image_index(self, image_path: str | Path) -> int:
+        target_path = Path(image_path).expanduser().resolve()
+        return next(
+            (
+                idx
+                for idx, candidate in enumerate(self.image_paths)
+                if Path(candidate).expanduser().resolve() == target_path
+            ),
+            -1,
+        )
+
     def encode_query(self, query_text: str) -> np.ndarray:
         inputs = self.processor(
             text=[query_text],
@@ -218,6 +259,16 @@ class MLXSigLIPSearchEngine(BaseSearchEngine):
         mx.eval(embedding)
         return np.asarray(embedding, dtype=np.float32)[0]
 
+    def encode_query_image(self, image: Image.Image) -> np.ndarray:
+        inputs = self.processor(images=[image], return_tensors="mlx")
+        image_inputs = {"pixel_values": inputs["pixel_values"]}
+        if "pixel_attention_mask" in inputs:
+            image_inputs["pixel_attention_mask"] = inputs["pixel_attention_mask"]
+        embedding = self.model.get_image_features(**image_inputs)
+        embedding = l2_normalize(embedding)
+        mx.eval(embedding)
+        return np.asarray(embedding, dtype=np.float32)[0]
+
     def search(self, query_text: str, k: int = 20) -> List[Tuple[str, Optional[str]]]:
         if not is_searchable_query(query_text) or not self.image_paths or k <= 0:
             return []
@@ -225,10 +276,32 @@ class MLXSigLIPSearchEngine(BaseSearchEngine):
         query_vector = self.encode_query(query_text)
         scores = self.embeddings @ query_vector
         scores = apply_metadata_boost(scores=scores, metadata_texts=self.metadata_texts, query_text=query_text)
-        k = min(k, len(self.image_paths))
-        top_indices = np.argpartition(-scores, k - 1)[:k]
-        top_indices = top_indices[np.argsort(-scores[top_indices])]
-        return [(self.image_paths[int(index)], None) for index in top_indices]
+        return self._rank_scores(scores, k=k)
+
+    def search_by_image(self, image: Image.Image, k: int = 20) -> List[Tuple[str, Optional[str]]]:
+        if not self.image_paths or k <= 0:
+            return []
+        query_vector = self.encode_query_image(image)
+        scores = self.embeddings @ query_vector
+        return self._rank_scores(scores, k=k)
+
+    def search_similar(self, image_path: str | Path, k: int = 20) -> List[Tuple[str, Optional[str]]]:
+        if not self.image_paths or k <= 0:
+            return []
+
+        index = self._find_image_index(image_path)
+        if index >= 0:
+            query_vector = np.asarray(self.embeddings[index], dtype=np.float32)
+            norm = np.linalg.norm(query_vector)
+            if norm > 0:
+                query_vector = query_vector / norm
+            scores = self.embeddings @ query_vector
+            return self._rank_scores(scores, k=k, exclude_index=index)
+
+        image = open_rgb_image(image_path)
+        query_vector = self.encode_query_image(image)
+        scores = self.embeddings @ query_vector
+        return self._rank_scores(scores, k=k)
 
 
 def build_search_engine(config_path: str, device: str):

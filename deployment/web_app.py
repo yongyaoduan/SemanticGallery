@@ -13,7 +13,7 @@ from threading import RLock
 from urllib.parse import quote
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -52,6 +52,7 @@ class LocalGalleryServer:
         self.gallery_path = Path(search_engine.gallery_path).expanduser().resolve()
         self.templates = Jinja2Templates(directory=(Path(__file__).parent / "templates").as_posix())
         self.static_dir = Path(__file__).parent / "static"
+        self.static_version = self._build_static_version()
         self.thumbnail_dir = Path(__file__).parent / ".thumb_cache" / self.gallery_path.name
         self.trash_dir = Path(__file__).parent / ".delete_staging" / self.gallery_path.name
         self.metadata_cache: dict[str, dict[str, str]] = {}
@@ -68,7 +69,7 @@ class LocalGalleryServer:
             return self.templates.TemplateResponse(
                 request=request,
                 name="index.html",
-                context={"title": "SemanticGallery"},
+                context={"title": "SemanticGallery", "static_version": self.static_version},
             )
 
         @app.get("/api/search")
@@ -79,20 +80,25 @@ class LocalGalleryServer:
 
             with self.engine_lock:
                 results = self.search_engine.search(text, k=limit)
-            payload = []
-            for image_path, _caption in results:
-                relative_path = self._relative_image_path(image_path)
-                payload.append(
-                    {
-                        "name": Path(image_path).stem,
-                        "fileName": Path(image_path).name,
-                        "thumbnailUrl": f"/thumbs/{relative_path}",
-                        "fullUrl": f"/images/{relative_path}",
-                        "metadataUrl": f"/api/metadata/{relative_path}",
-                        "deleteUrl": f"/api/images/{relative_path}",
-                    }
-                )
-            return {"query": text, "results": payload}
+            return {"query": text, "results": self._build_results_payload(results)}
+
+        @app.post("/api/search/image")
+        async def search_image(image: UploadFile = File(...), limit: int = Query(25, ge=1, le=100)):
+            file_bytes = await image.read()
+            if not file_bytes:
+                raise HTTPException(status_code=400, detail="Image is empty.")
+
+            query_image = self._read_uploaded_image(file_bytes)
+            with self.engine_lock:
+                results = self.search_engine.search_by_image(query_image, k=limit)
+            return {"query": "", "results": self._build_results_payload(results)}
+
+        @app.get("/api/similar/{image_path:path}")
+        async def search_similar(image_path: str, limit: int = Query(25, ge=1, le=100)):
+            file_path = self._resolve_gallery_file(image_path)
+            with self.engine_lock:
+                results = self.search_engine.search_similar(file_path, k=limit)
+            return {"query": "", "results": self._build_results_payload(results)}
 
         @app.get("/api/metadata/{image_path:path}")
         async def metadata(image_path: str):
@@ -123,6 +129,23 @@ class LocalGalleryServer:
             return FileResponse(thumbnail_path, media_type="image/jpeg")
 
         return app
+
+    def _build_results_payload(self, results):
+        payload = []
+        for image_path, _caption in results:
+            relative_path = self._relative_image_path(image_path)
+            payload.append(
+                {
+                    "name": Path(image_path).stem,
+                    "fileName": Path(image_path).name,
+                    "thumbnailUrl": f"/thumbs/{relative_path}",
+                    "fullUrl": f"/images/{relative_path}",
+                    "metadataUrl": f"/api/metadata/{relative_path}",
+                    "deleteUrl": f"/api/images/{relative_path}",
+                    "similarUrl": f"/api/similar/{relative_path}",
+                }
+            )
+        return payload
 
     def _resolve_gallery_file(self, image_path: str) -> Path:
         candidate = (self.gallery_path / image_path).resolve()
@@ -180,6 +203,23 @@ class LocalGalleryServer:
         }
         self.metadata_cache[cache_key] = payload
         return payload
+
+    @staticmethod
+    def _read_uploaded_image(file_bytes: bytes) -> Image.Image:
+        try:
+            with Image.open(io.BytesIO(file_bytes)) as image:
+                return ImageOps.exif_transpose(image).convert("RGB")
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="Unsupported image payload.") from exc
+
+    def _build_static_version(self) -> str:
+        targets = [
+            self.static_dir / "app.css",
+            self.static_dir / "app.js",
+            Path(__file__).parent / "templates" / "index.html",
+        ]
+        latest = max(int(path.stat().st_mtime_ns) for path in targets if path.exists())
+        return str(latest)
 
     def _thumbnail_cache_path(self, file_path: Path) -> Path:
         relative = file_path.relative_to(self.gallery_path).as_posix()

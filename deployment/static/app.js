@@ -1,5 +1,11 @@
 const form = document.getElementById("search-form");
 const input = document.getElementById("search-input");
+const imageInput = document.getElementById("image-input");
+const imagePickerButton = document.getElementById("image-picker-button");
+const imageQueryChip = document.getElementById("image-query-chip");
+const imageQueryPreview = document.getElementById("image-query-preview");
+const imageQueryLabel = document.getElementById("image-query-label");
+const imageQueryClear = document.getElementById("image-query-clear");
 const limitSelect = document.getElementById("result-limit");
 const results = document.getElementById("results");
 const template = document.getElementById("card-template");
@@ -8,6 +14,7 @@ const lightboxImage = document.getElementById("lightbox-image");
 const lightboxClose = document.getElementById("lightbox-close");
 const lightboxInfoToggle = document.getElementById("lightbox-info-toggle");
 const lightboxDelete = document.getElementById("lightbox-delete");
+const lightboxSimilar = document.getElementById("lightbox-similar");
 const lightboxMeta = document.getElementById("lightbox-meta");
 const lightboxFilename = document.getElementById("lightbox-filename");
 const lightboxPath = document.getElementById("lightbox-path");
@@ -18,6 +25,8 @@ let activeController = null;
 let activeMetadataController = null;
 let activeDeleteUrl = "";
 let activeFileName = "";
+let activeSimilarUrl = "";
+let activeImageQuery = null;
 const DEFAULT_LIMIT = 25;
 
 const isSearchableQuery = (text) => {
@@ -25,6 +34,89 @@ const isSearchableQuery = (text) => {
         return true;
     }
     return /[\u4e00-\u9fff]/u.test(text);
+};
+
+const revokeImageQueryPreview = () => {
+    if (activeImageQuery?.objectUrl) {
+        URL.revokeObjectURL(activeImageQuery.objectUrl);
+    }
+};
+
+const clearImageQuery = () => {
+    revokeImageQueryPreview();
+    activeImageQuery = null;
+    imageInput.value = "";
+    imageQueryPreview.removeAttribute("src");
+    imageQueryPreview.removeAttribute("alt");
+    imageQueryLabel.textContent = "";
+    imageQueryChip.hidden = true;
+};
+
+const renderImageQuery = () => {
+    if (!activeImageQuery) {
+        imageQueryChip.hidden = true;
+        imageQueryPreview.removeAttribute("src");
+        imageQueryPreview.removeAttribute("alt");
+        imageQueryLabel.textContent = "";
+        return;
+    }
+
+    imageQueryPreview.src = activeImageQuery.previewUrl;
+    imageQueryPreview.alt = activeImageQuery.label;
+    imageQueryLabel.textContent = activeImageQuery.label;
+    imageQueryChip.hidden = false;
+};
+
+const setUploadImageQuery = (file) => {
+    clearImageQuery();
+    const objectUrl = URL.createObjectURL(file);
+    activeImageQuery = {
+        kind: "upload",
+        file,
+        label: file.name || "Pasted image",
+        previewUrl: objectUrl,
+        objectUrl,
+    };
+    input.value = "";
+    renderImageQuery();
+};
+
+const setSimilarImageQuery = ({ previewUrl, similarUrl, fileName }) => {
+    clearImageQuery();
+    activeImageQuery = {
+        kind: "gallery",
+        similarUrl,
+        label: fileName || "Similar image",
+        previewUrl,
+    };
+    input.value = "";
+    renderImageQuery();
+};
+
+const updateUrlForText = (text, limit) => {
+    const params = new URLSearchParams(window.location.search);
+    if (!text) {
+        params.delete("q");
+    } else {
+        params.set("q", text);
+    }
+    if (limit === DEFAULT_LIMIT) {
+        params.delete("limit");
+    } else {
+        params.set("limit", String(limit));
+    }
+    history.replaceState(null, "", `${window.location.pathname}${params.toString() ? `?${params}` : ""}`);
+};
+
+const updateUrlForImage = (limit) => {
+    const params = new URLSearchParams(window.location.search);
+    params.delete("q");
+    if (limit === DEFAULT_LIMIT) {
+        params.delete("limit");
+    } else {
+        params.set("limit", String(limit));
+    }
+    history.replaceState(null, "", `${window.location.pathname}${params.toString() ? `?${params}` : ""}`);
 };
 
 const closeLightbox = () => {
@@ -39,7 +131,9 @@ const closeLightbox = () => {
     lightboxTime.textContent = "";
     activeDeleteUrl = "";
     activeFileName = "";
+    activeSimilarUrl = "";
     lightboxDelete.disabled = false;
+    lightboxSimilar.disabled = true;
     document.body.classList.remove("is-locked");
     if (activeMetadataController) {
         activeMetadataController.abort();
@@ -59,7 +153,7 @@ const loadMetadata = async (metadataUrl) => {
     return response.json();
 };
 
-const openLightbox = async (fullUrl, altText, fileName, metadataUrl, deleteUrl) => {
+const openLightbox = async ({ fullUrl, altText, fileName, metadataUrl, deleteUrl, similarUrl }) => {
     lightboxImage.src = fullUrl;
     lightboxImage.alt = altText;
     lightboxMeta.hidden = true;
@@ -70,7 +164,9 @@ const openLightbox = async (fullUrl, altText, fileName, metadataUrl, deleteUrl) 
     lightboxTime.textContent = "读取中";
     activeDeleteUrl = deleteUrl || "";
     activeFileName = fileName || "";
+    activeSimilarUrl = similarUrl || "";
     lightboxDelete.disabled = !activeDeleteUrl;
+    lightboxSimilar.disabled = !activeSimilarUrl;
     lightbox.hidden = false;
     document.body.classList.add("is-locked");
 
@@ -106,6 +202,7 @@ const renderResults = (items) => {
         node.dataset.fileName = item.fileName;
         node.dataset.metadataUrl = item.metadataUrl;
         node.dataset.deleteUrl = item.deleteUrl;
+        node.dataset.similarUrl = item.similarUrl;
         fragment.appendChild(node);
     }
     results.appendChild(fragment);
@@ -128,7 +225,7 @@ const deleteActiveImage = async () => {
             throw new Error("delete");
         }
         closeLightbox();
-        await runSearch(input.value);
+        await runCurrentSearch();
     } catch (error) {
         lightboxDelete.disabled = false;
         window.alert("删除失败，请重试。");
@@ -143,48 +240,98 @@ const normalizedLimit = () => {
     return Math.min(raw, 100);
 };
 
-const runSearch = async (query) => {
-    const text = query.trim();
-    const params = new URLSearchParams(window.location.search);
-    const limit = normalizedLimit();
-
-    if (!isSearchableQuery(text)) {
-        params.delete("q");
-        params.delete("limit");
-        history.replaceState(null, "", `${window.location.pathname}${params.toString() ? `?${params}` : ""}`);
-        renderResults([]);
-        return;
-    }
-
-    params.set("q", text);
-    if (limit === DEFAULT_LIMIT) {
-        params.delete("limit");
-    } else {
-        params.set("limit", String(limit));
-    }
-    history.replaceState(null, "", `${window.location.pathname}?${params}`);
-
+const fetchResults = async (url, options = {}) => {
     if (activeController) {
         activeController.abort();
     }
     activeController = new AbortController();
-
-    const response = await fetch(`/api/search?q=${encodeURIComponent(text)}&limit=${limit}`, {
-        signal: activeController.signal,
-    });
+    const response = await fetch(url, { ...options, signal: activeController.signal });
     if (!response.ok) {
         renderResults([]);
         return;
     }
-
     const payload = await response.json();
     renderResults(payload.results || []);
+};
+
+const runTextSearch = async (query) => {
+    const text = query.trim();
+    const limit = normalizedLimit();
+    if (!isSearchableQuery(text)) {
+        updateUrlForText("", DEFAULT_LIMIT);
+        renderResults([]);
+        return;
+    }
+
+    updateUrlForText(text, limit);
+    await fetchResults(`/api/search?q=${encodeURIComponent(text)}&limit=${limit}`);
+};
+
+const runImageSearch = async () => {
+    if (!activeImageQuery) {
+        renderResults([]);
+        return;
+    }
+
+    const limit = normalizedLimit();
+    updateUrlForImage(limit);
+
+    if (activeImageQuery.kind === "gallery") {
+        await fetchResults(`${activeImageQuery.similarUrl}?limit=${limit}`);
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("image", activeImageQuery.file, activeImageQuery.file.name || "query-image");
+    await fetchResults(`/api/search/image?limit=${limit}`, { method: "POST", body: formData });
+};
+
+const runCurrentSearch = async () => {
+    if (activeImageQuery) {
+        await runImageSearch();
+        return;
+    }
+    await runTextSearch(input.value);
+};
+
+const applyUploadImageFile = async (file) => {
+    if (!file) {
+        return;
+    }
+    setUploadImageQuery(file);
+    try {
+        await runImageSearch();
+    } catch (error) {
+        if (error.name !== "AbortError") {
+            renderResults([]);
+        }
+    }
+};
+
+const maybeExtractPastedImage = (event) => {
+    const items = event.clipboardData?.items || [];
+    for (const item of items) {
+        if (item.kind === "file" && item.type.startsWith("image/")) {
+            return item.getAsFile();
+        }
+    }
+    return null;
+};
+
+const handlePasteImage = async (event) => {
+    const file = maybeExtractPastedImage(event);
+    if (!file) {
+        return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    await applyUploadImageFile(file);
 };
 
 form.addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
-        await runSearch(input.value);
+        await runCurrentSearch();
     } catch (error) {
         if (error.name !== "AbortError") {
             renderResults([]);
@@ -192,13 +339,37 @@ form.addEventListener("submit", async (event) => {
     }
 });
 
+input.addEventListener("paste", handlePasteImage);
+form.addEventListener("paste", handlePasteImage);
+document.addEventListener("paste", handlePasteImage, true);
+
+imagePickerButton.addEventListener("click", () => {
+    imageInput.click();
+});
+
+imageInput.addEventListener("change", async (event) => {
+    const [file] = event.target.files || [];
+    await applyUploadImageFile(file);
+});
+
+imageQueryClear.addEventListener("click", async () => {
+    clearImageQuery();
+    try {
+        await runCurrentSearch();
+    } catch (error) {
+        if (error.name !== "AbortError") {
+            renderResults([]);
+        }
+    }
+    input.focus();
+});
+
 limitSelect.addEventListener("change", async () => {
-    const query = input.value.trim();
-    if (!query) {
+    if (!input.value.trim() && !activeImageQuery) {
         return;
     }
     try {
-        await runSearch(query);
+        await runCurrentSearch();
     } catch (error) {
         if (error.name !== "AbortError") {
             renderResults([]);
@@ -211,17 +382,37 @@ results.addEventListener("click", (event) => {
     if (!card) {
         return;
     }
-    openLightbox(
-        card.dataset.fullUrl,
-        card.dataset.altText || "",
-        card.dataset.fileName || "",
-        card.dataset.metadataUrl || "",
-        card.dataset.deleteUrl || "",
-    );
+    openLightbox({
+        fullUrl: card.dataset.fullUrl,
+        altText: card.dataset.altText || "",
+        fileName: card.dataset.fileName || "",
+        metadataUrl: card.dataset.metadataUrl || "",
+        deleteUrl: card.dataset.deleteUrl || "",
+        similarUrl: card.dataset.similarUrl || "",
+    });
 });
 
 lightboxClose.addEventListener("click", closeLightbox);
 lightboxDelete.addEventListener("click", deleteActiveImage);
+
+lightboxSimilar.addEventListener("click", async () => {
+    if (!activeSimilarUrl || lightboxSimilar.disabled) {
+        return;
+    }
+    setSimilarImageQuery({
+        previewUrl: lightboxImage.src,
+        similarUrl: activeSimilarUrl,
+        fileName: activeFileName,
+    });
+    closeLightbox();
+    try {
+        await runImageSearch();
+    } catch (error) {
+        if (error.name !== "AbortError") {
+            renderResults([]);
+        }
+    }
+});
 
 lightboxInfoToggle.addEventListener("click", () => {
     const nextHidden = !lightboxMeta.hidden;
@@ -241,6 +432,10 @@ document.addEventListener("keydown", (event) => {
     }
 });
 
+window.addEventListener("beforeunload", () => {
+    revokeImageQueryPreview();
+});
+
 window.addEventListener("DOMContentLoaded", async () => {
     const params = new URLSearchParams(window.location.search);
     const query = params.get("q");
@@ -254,7 +449,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
     input.value = query;
     try {
-        await runSearch(query);
+        await runTextSearch(query);
     } catch (error) {
         if (error.name !== "AbortError") {
             renderResults([]);

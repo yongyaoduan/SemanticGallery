@@ -48,8 +48,8 @@ ensure_env() {
     log_step "Creating Python environment"
     uv venv "$ROOT_DIR/.venv" --python 3.12
   fi
-  if ! "$PYTHON_BIN_PATH" - <<'PY' >/dev/null 2>&1; then
-import datasets, fastapi, huggingface_hub, jinja2, mlx, mlx_embeddings, pillow_heif, tqdm, uvicorn
+    if ! "$PYTHON_BIN_PATH" - <<'PY' >/dev/null 2>&1; then
+import datasets, fastapi, huggingface_hub, jinja2, mlx, mlx_embeddings, multipart, pillow_heif, tqdm, uvicorn
 PY
     log_step "Installing Python dependencies"
     uv pip install --python "$PYTHON_BIN_PATH" -r "$ROOT_DIR/requirements.txt"

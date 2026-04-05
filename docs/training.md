@@ -28,13 +28,23 @@ The local adaptation set comes from the user's own gallery and typically mixes p
 
 Stage 2 keeps the text tower frozen and combines three losses:
 
-`L = 1.0 * L_public_txtimg + 0.5 * L_private_instance + 0.1 * L_distill`
+`L = 1.0 * L_public_txtimg + 0.3 * L_private_instance + 0.15 * L_distill`
 
 | Loss | Purpose |
 | --- | --- |
 | `L_public_txtimg` | Keeps the published retrieval space aligned to public text-image supervision |
 | `L_private_instance` | Pulls two augmented views of the same local image together |
 | `L_distill` | Keeps the adapted image encoder close to the published Stage 1 teacher |
+
+The shipped weights were selected from a small Stage 2 sweep on the same published Stage 1 checkpoint, the same `1000`-row public reference set, and the same capped local adaptation set. Three candidates were tested with the same seed and one Stage 2 epoch:
+
+| `L_private_instance` | `L_distill` | Train loss | Val loss |
+| ---: | ---: | ---: | ---: |
+| `0.30` | `0.15` | `0.6296` | `0.4931` |
+| `0.40` | `0.08` | `0.6568` | `0.4937` |
+| `0.50` | `0.10` | `0.6850` | `0.4935` |
+
+The differences are small, but `0.30 / 0.15` gave the lowest validation loss in that sweep. That is the default shipped Stage 2 setting.
 
 ## Full Retraining
 

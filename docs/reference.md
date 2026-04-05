@@ -1,91 +1,95 @@
 # Reference
 
+Set variables inline before the command:
+
+```bash
+NAME=value OTHER=value ./scripts/quickstart.sh
+```
+
 This page lists the user-facing environment variables exposed by the shell entrypoints in `scripts/`.
 
 ## Quick Start
 
-| Variable | Meaning | Default |
-| --- | --- | --- |
-| `GALLERY_PATH` | Folder to index and search | required |
-| `STAGE1_WEIGHTS` | Optional published-checkpoint override for the adaptation step | local Stage 1 if present, otherwise the published checkpoint |
-| `HOST` | Web app bind address | `127.0.0.1` |
-| `PORT` | Web app port | `36168` |
-| `CONFIG_OUTPUT` | Search-config output path for the current run | `deployment/search_config_gallery_mlx.json` |
-| `METADATA_MANIFEST` | Manifest used for runtime metadata boost and metadata display | `datasets/private_gallery_local/full_manifest.jsonl` |
-| `MODEL_PRECISION` | Precision used for gallery encoding and search | `bfloat16` |
-| `RUNTIME_DIR` | Directory that stores runtime logs and PID files | `logs/runtime` |
-| `LOG_FILE` | Startup log path | `logs/runtime/semanticgallery_<port>.log` |
-| `PID_FILE` | PID file path | `logs/runtime/semanticgallery_<port>.pid` |
-| `STARTUP_TIMEOUT_SECONDS` | Max wait time before startup is considered failed | `300` |
-| `FORCE` | Rebuild the gallery index instead of reusing the existing one | `0` |
-| `ENCODE_BATCH_SIZE` | Batch size for offline gallery encoding | `8` |
+| Variable | Values | Default | Effect |
+| --- | --- | --- | --- |
+| `GALLERY_PATH` | Absolute path to a local image folder. Required. | none | Selects the gallery to adapt, index, and serve. |
+| `STAGE1_WEIGHTS` | Absolute path to a `weights.safetensors` file, or unset. | local Stage 1 if present, otherwise the published checkpoint | Overrides the starting checkpoint used by the Stage 2 adaptation step. |
+| `HOST` | IP address or hostname string. Typical values: `127.0.0.1`, `0.0.0.0`. | `127.0.0.1` | Controls where the web app binds. `127.0.0.1` keeps it local. `0.0.0.0` exposes it to the local network. |
+| `PORT` | Unused TCP port number. | `36168` | Changes the web URL and the runtime log and PID filenames. |
+| `CONFIG_OUTPUT` | Path to a JSON file. | `deployment/search_config_gallery_mlx.json` | Changes where the generated search config is written. |
+| `METADATA_MANIFEST` | Path to a local JSONL file, or unset. | `datasets/private_gallery_local/full_manifest.jsonl` | Supplies weak captions for metadata display and the small runtime metadata boost. |
+| `MODEL_PRECISION` | `bfloat16` or `float32`. | `bfloat16` | Controls precision for gallery encoding and query encoding. `bfloat16` is the normal fast path. `float32` is slower and more conservative. |
+| `RUNTIME_DIR` | Directory path. | `logs/runtime` | Controls where `quickstart.sh` writes the startup log and PID file. |
+| `LOG_FILE` | File path. | `logs/runtime/semanticgallery_<port>.log` | Overrides the startup log location. |
+| `PID_FILE` | File path. | `logs/runtime/semanticgallery_<port>.pid` | Overrides the PID file location. |
+| `STARTUP_TIMEOUT_SECONDS` | Positive integer. | `300` | Changes how long `quickstart.sh` waits for the ready marker before failing. |
+| `FORCE` | `0` or `1`. | `0` | `1` reruns gallery encoding and rewrites the search config instead of reusing existing index files. |
+| `ENCODE_BATCH_SIZE` | Positive integer. | `8` | Controls gallery-encoding batch size. Larger values can improve throughput but use more memory. |
 
 ## Direct Deployment
 
 These variables apply when `deploy_best.sh` is run directly.
 
-| Variable | Meaning | Default |
-| --- | --- | --- |
-| `GALLERY_PATH` | Folder to index and search | required |
-| `CONFIG_OUTPUT` | Search-config output path for the current run | `deployment/search_config_gallery_mlx.json` |
-| `METADATA_MANIFEST` | Manifest used for runtime metadata boost and metadata display | `datasets/private_gallery_local/full_manifest.jsonl` |
-| `HOST` | Web app bind address | `127.0.0.1` |
-| `PORT` | Web app port | `36168` |
-| `MODEL_PRECISION` | Precision used for gallery encoding and search | `bfloat16` |
-| `MODEL_WEIGHTS` | Optional model-weight override used for gallery encoding and query encoding | latest local adaptation if present, otherwise Stage 1 |
-| `FORCE` | Rebuild the gallery index instead of reusing the existing one | `0` |
-| `ENCODE_BATCH_SIZE` | Batch size for offline gallery encoding | `8` |
+| Variable | Values | Default | Effect |
+| --- | --- | --- | --- |
+| `GALLERY_PATH` | Absolute path to a local image folder. Required. | none | Selects the gallery to index and serve. |
+| `CONFIG_OUTPUT` | Path to a JSON file. | `deployment/search_config_gallery_mlx.json` | Changes where the generated search config is written. |
+| `METADATA_MANIFEST` | Path to a local JSONL file, or unset. | `datasets/private_gallery_local/full_manifest.jsonl` | Supplies weak captions for metadata display and the small runtime metadata boost. |
+| `HOST` | IP address or hostname string. Typical values: `127.0.0.1`, `0.0.0.0`. | `127.0.0.1` | Controls where the web app binds. |
+| `PORT` | Unused TCP port number. | `36168` | Changes the web URL and the runtime log and PID filenames. |
+| `MODEL_PRECISION` | `bfloat16` or `float32`. | `bfloat16` | Controls precision for gallery encoding and query encoding. |
+| `MODEL_WEIGHTS` | Absolute path to a `weights.safetensors` file, or unset. | latest local adaptation if present, otherwise Stage 1 | Overrides the weights used for gallery encoding and query encoding. |
+| `FORCE` | `0` or `1`. | `0` | `1` reruns gallery encoding instead of reusing existing index files. |
+| `ENCODE_BATCH_SIZE` | Positive integer. | `8` | Controls gallery-encoding batch size. Larger values can improve throughput but use more memory. |
 
 ## Data Preparation
 
-| Variable | Meaning | Default |
-| --- | --- | --- |
-| `PRIVATE_GALLERY_PATH` | Gallery path used to build local manifests | required unless manifests already exist |
-| `ALIASES_JSON` | Optional folder-alias JSON used during manifest generation | `datasets/private_gallery_local/aliases.local.json` if present |
-| `QUERY_SUITE_PATH` | Optional local query suite used to prioritize folders during capped local sampling | `datasets/private_gallery_local/query_suite.local.json` if present |
-| `PREPARE_PUBLIC_DATA` | Download and prepare the full public corpus for Stage 1 reproduction | `0` |
-| `FORCE` | Refresh public datasets even if local copies already meet the minimum row threshold | `0` |
+| Variable | Values | Default | Effect |
+| --- | --- | --- | --- |
+| `PRIVATE_GALLERY_PATH` | Absolute path to a local image folder. | required unless manifests already exist | Builds `full_manifest.jsonl` and `private_adapt_data.jsonl` from the user's gallery. |
+| `PREPARE_PUBLIC_DATA` | `0` or `1`. | `0` | `1` also downloads and prepares Flickr30k plus Screen2Words for full Stage 1 retraining. `0` keeps the default local-only preparation path. |
+| `FORCE` | `0` or `1`. | `0` | Only affects the public Stage 1 datasets here. `1` refreshes them even if the local copies already meet the row threshold. |
 
 ## Gallery-Specific Adaptation
 
-These variables apply to `adapt_best.sh`. In the shipped default Stage 2 path, the text tower is frozen, so `TEXT_UNFREEZE_LAST_N` does not change the trainable set unless you also change the script behavior.
+These variables apply to `adapt_best.sh`. In the shipped default Stage 2 path, the text tower stays frozen.
 
-| Variable | Meaning | Default |
-| --- | --- | --- |
-| `FINAL_RUN_NAME` | Output directory name under `logs/` | `semanticgallery_private_data_adapted` |
-| `STAGE1_WEIGHTS` | Optional starting checkpoint for adaptation | local Stage 1 if present, otherwise the published checkpoint |
-| `MAX_EPOCHS_STAGE2` | Stage 2 epoch count | `1` |
-| `TRAIN_BATCH_SIZE` | Public text-image batch size | `4` |
-| `TRAIN_PRECISION` | Training precision | `bfloat16` |
-| `VISION_UNFREEZE_LAST_N` | Number of vision blocks left trainable | `2` |
-| `LR_STAGE2` | Stage 2 learning rate | `5e-6` |
-| `PRIVATE_BATCH_SIZE` | Per-step private image batch size | `8` |
-| `PRIVATE_REPEATS_PER_EPOCH` | Number of passes over the capped local set per Stage 2 epoch | `2` |
-| `PRIVATE_INSTANCE_WEIGHT` | Weight of the image-instance loss | `0.5` |
-| `PRIVATE_DISTILL_WEIGHT` | Weight of the distillation loss | `0.1` |
-| `MAX_TRAIN_STEPS` | Optional training-step cap for smoke tests | unset |
-| `MAX_VAL_STEPS` | Optional validation-step cap for smoke tests | unset |
+| Variable | Values | Default | Effect |
+| --- | --- | --- | --- |
+| `FINAL_RUN_NAME` | Directory name under `logs/`. | `semanticgallery_private_data_adapted` | Changes where Stage 2 writes weights, summary files, and history. |
+| `STAGE1_WEIGHTS` | Absolute path to a `weights.safetensors` file, or unset. | local Stage 1 if present, otherwise the published checkpoint | Overrides the starting checkpoint for Stage 2. |
+| `MAX_EPOCHS_STAGE2` | Positive integer. | `1` | Controls how many Stage 2 epochs are run. |
+| `TRAIN_BATCH_SIZE` | Positive integer. | `4` | Controls the public text-image batch size used during Stage 2. |
+| `TRAIN_PRECISION` | `bfloat16` or `float32`. | `bfloat16` | Controls Stage 2 training precision. `bfloat16` is the normal fast path. `float32` is slower and more conservative. |
+| `VISION_UNFREEZE_LAST_N` | Integer `>= 0`. | `2` | Controls how many vision blocks remain trainable. `0` freezes the vision tower. Larger values tune more of the encoder and use more memory. |
+| `LR_STAGE2` | Positive float. | `5e-6` | Controls the Stage 2 learning rate. Larger values adapt faster but increase drift risk. |
+| `PRIVATE_BATCH_SIZE` | Positive integer. | `8` | Controls how many local images are used per private Stage 2 step. |
+| `PRIVATE_REPEATS_PER_EPOCH` | Positive integer. | `2` | Controls how many passes Stage 2 makes over the capped local set in one epoch. |
+| `PRIVATE_INSTANCE_WEIGHT` | Non-negative float. | `0.3` | Weights the image-instance loss. Larger values pull harder toward gallery-specific invariance. |
+| `PRIVATE_DISTILL_WEIGHT` | Non-negative float. | `0.15` | Weights the distillation loss. Larger values keep the adapted image encoder closer to the Stage 1 teacher. |
+| `MAX_TRAIN_STEPS` | Positive integer, or unset. | unset | Caps training steps for smoke tests or short experiments. |
+| `MAX_VAL_STEPS` | Positive integer, or unset. | unset | Caps validation steps for smoke tests or short experiments. |
 
 ## Full Retraining
 
-| Variable | Meaning | Default |
-| --- | --- | --- |
-| `PUBLIC_RUN_NAME` | Stage 1 output directory name under `logs/` | `semanticgallery_public_stage1` |
-| `FINAL_RUN_NAME` | Final Stage 1 -> Stage 2 output directory name under `logs/` | `semanticgallery_public_plus_private_data` |
-| `MAX_EPOCHS_STAGE1` | Stage 1 epoch count | `1` |
-| `MAX_EPOCHS_STAGE2` | Stage 2 epoch count after Stage 1 | `1` |
-| `TRAIN_BATCH_SIZE` | Public text-image batch size | `4` |
-| `TRAIN_PRECISION` | Training precision | `bfloat16` |
-| `TEXT_UNFREEZE_LAST_N` | Number of text blocks left trainable during Stage 1 | `2` |
-| `VISION_UNFREEZE_LAST_N` | Number of vision blocks left trainable | `2` |
-| `LR_STAGE1` | Stage 1 learning rate | `1e-5` |
-| `LR_STAGE2` | Stage 2 learning rate | `5e-6` |
-| `PRIVATE_BATCH_SIZE` | Per-step private image batch size during Stage 2 | `8` |
-| `PRIVATE_REPEATS_PER_EPOCH` | Number of passes over the capped local set per Stage 2 epoch | `2` |
-| `PRIVATE_INSTANCE_WEIGHT` | Weight of the image-instance loss | `0.5` |
-| `PRIVATE_DISTILL_WEIGHT` | Weight of the distillation loss | `0.1` |
-| `MAX_TRAIN_STEPS` | Optional training-step cap for smoke tests | unset |
-| `MAX_VAL_STEPS` | Optional validation-step cap for smoke tests | unset |
+| Variable | Values | Default | Effect |
+| --- | --- | --- | --- |
+| `PUBLIC_RUN_NAME` | Directory name under `logs/`. | `semanticgallery_public_stage1` | Changes where Stage 1 writes weights, summary files, and history. |
+| `FINAL_RUN_NAME` | Directory name under `logs/`. | `semanticgallery_public_plus_private_data` | Changes where the final Stage 1 -> Stage 2 run writes weights, summary files, and history. |
+| `MAX_EPOCHS_STAGE1` | Positive integer. | `1` | Controls how many Stage 1 epochs are run. |
+| `MAX_EPOCHS_STAGE2` | Positive integer. | `1` | Controls how many Stage 2 epochs run after Stage 1. |
+| `TRAIN_BATCH_SIZE` | Positive integer. | `4` | Controls the public text-image batch size in both stages. |
+| `TRAIN_PRECISION` | `bfloat16` or `float32`. | `bfloat16` | Controls training precision for both stages. |
+| `TEXT_UNFREEZE_LAST_N` | Integer `>= 0`. | `2` | Controls how many text blocks remain trainable during Stage 1. `0` freezes the text tower. Larger values tune more of the text encoder and use more memory. |
+| `VISION_UNFREEZE_LAST_N` | Integer `>= 0`. | `2` | Controls how many vision blocks remain trainable in both stages. |
+| `LR_STAGE1` | Positive float. | `1e-5` | Controls the Stage 1 learning rate. |
+| `LR_STAGE2` | Positive float. | `5e-6` | Controls the Stage 2 learning rate after Stage 1. |
+| `PRIVATE_BATCH_SIZE` | Positive integer. | `8` | Controls how many local images are used per private Stage 2 step. |
+| `PRIVATE_REPEATS_PER_EPOCH` | Positive integer. | `2` | Controls how many passes Stage 2 makes over the capped local set in one epoch. |
+| `PRIVATE_INSTANCE_WEIGHT` | Non-negative float. | `0.3` | Weights the image-instance loss in Stage 2. |
+| `PRIVATE_DISTILL_WEIGHT` | Non-negative float. | `0.15` | Weights the distillation loss in Stage 2. |
+| `MAX_TRAIN_STEPS` | Positive integer, or unset. | unset | Caps training steps for smoke tests or short experiments. |
+| `MAX_VAL_STEPS` | Positive integer, or unset. | unset | Caps validation steps for smoke tests or short experiments. |
 
 ## Common Operations
 

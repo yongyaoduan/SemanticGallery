@@ -7,8 +7,6 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_env.sh"
 ensure_env
 
 PRIVATE_GALLERY_PATH="${PRIVATE_GALLERY_PATH:-${1:-}}"
-ALIASES_JSON="${ALIASES_JSON:-$ROOT/datasets/private_gallery_local/aliases.local.json}"
-QUERY_SUITE_PATH="${QUERY_SUITE_PATH:-$ROOT/datasets/private_gallery_local/query_suite.local.json}"
 PRIVATE_DIR="$ROOT/datasets/private_gallery_local"
 PREPARE_PUBLIC_DATA="${PREPARE_PUBLIC_DATA:-0}"
 MIN_FLICKR_IMAGES="${MIN_FLICKR_IMAGES:-30000}"
@@ -111,10 +109,6 @@ if [[ -n "$PRIVATE_GALLERY_PATH" ]]; then
     --output-path "$PRIVATE_DIR/full_manifest.jsonl"
     --source-name private_gallery_local
   )
-  if [[ -f "$ALIASES_JSON" ]]; then
-    log_kv "aliases_json=$ALIASES_JSON"
-    gallery_cmd+=(--aliases-json "$ALIASES_JSON")
-  fi
   "${gallery_cmd[@]}"
 
   log_step "Sampling capped private adaptation set"
@@ -125,10 +119,6 @@ if [[ -n "$PRIVATE_GALLERY_PATH" ]]; then
     --target-size 100
     --output-path "$PRIVATE_DIR/private_adapt_data.jsonl"
   )
-  if [[ -f "$QUERY_SUITE_PATH" ]]; then
-    log_kv "query_suite=$QUERY_SUITE_PATH"
-    adapt_cmd+=(--query-suite "$QUERY_SUITE_PATH")
-  fi
   "${adapt_cmd[@]}"
 elif [[ ! -f "$PRIVATE_DIR/full_manifest.jsonl" || ! -f "$PRIVATE_DIR/private_adapt_data.jsonl" ]]; then
   die "set PRIVATE_GALLERY_PATH to build the capped private adaptation set."

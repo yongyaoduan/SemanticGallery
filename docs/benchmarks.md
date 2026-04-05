@@ -86,3 +86,38 @@ These numbers are reference selection results recorded during development. They 
 - `Stage 1 -> Stage 2` keeps those public gains while adding gallery-specific adaptation
 
 The shipped training path is `Stage 1 -> Stage 2`.
+
+## Stage 2 Weight Selection
+
+The shipped Stage 2 loss keeps three terms active:
+
+`L = 1.0 * L_public_txtimg + w_instance * L_private_instance + w_distill * L_distill`
+
+The selection question is how much gallery-specific pull to add without drifting too far from the published Stage 1 checkpoint. The reference sweep below used the same Stage 1 checkpoint, the same `1000`-row public reference set, the same capped local adaptation set, the same seed, and one Stage 2 epoch.
+
+### Reference Setup
+
+| Item | Value |
+| --- | --- |
+| Base checkpoint | published Stage 1 checkpoint |
+| Public Stage 2 reference set | `1000` rows: `500` Flickr30k + `500` Screen2Words |
+| Local adaptation set | `32` demo-gallery images |
+| Precision | `bfloat16` |
+| Stage 2 epoch count | `1` |
+| Public batch size | `4` |
+| Private batch size | `8` |
+| Metric | Stage 2 train loss and validation loss |
+
+### Weight Sweep
+
+| `w_instance` | `w_distill` | Train loss | Val loss |
+| ---: | ---: | ---: | ---: |
+| `0.30` | `0.15` | `0.6296` | `0.4931` |
+| `0.40` | `0.08` | `0.6568` | `0.4937` |
+| `0.50` | `0.10` | `0.6850` | `0.4935` |
+
+### Analysis
+
+- All three settings land in a narrow band, so Stage 2 is not highly sensitive to small weight changes in this range
+- `0.30 / 0.15` produced the lowest validation loss in the reference sweep
+- The shipped Stage 2 defaults use `w_instance=0.30` and `w_distill=0.15`

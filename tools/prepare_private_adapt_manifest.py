@@ -12,9 +12,7 @@ def parse_args():
     parser.add_argument("--source-manifest", required=True)
     parser.add_argument("--output-path", required=True)
     parser.add_argument("--target-size", type=int, default=100)
-    parser.add_argument("--query-suite", default=None, help="Optional query suite JSON used to prioritize folders.")
     parser.add_argument("--seed", type=int, default=20260403)
-    parser.add_argument("--min-priority-per-folder", type=int, default=4)
     return parser.parse_args()
 
 
@@ -37,21 +35,7 @@ def infer_folder_name(row: dict) -> str:
     return "unknown"
 
 
-def load_priority_folders(query_suite_path: str | None) -> list[str]:
-    if not query_suite_path:
-        return []
-    suite = json.loads(Path(query_suite_path).expanduser().resolve().read_text(encoding="utf-8"))
-    ordered = []
-    seen = set()
-    for case in suite:
-        for folder in case.get("positives", []):
-            if folder not in seen:
-                seen.add(folder)
-                ordered.append(folder)
-    return ordered
-
-
-def balanced_sample(rows: list[dict], target_size: int, priority_folders: list[str], seed: int, min_priority_per_folder: int):
+def balanced_sample(rows: list[dict], target_size: int, seed: int):
     rng = random.Random(seed)
     grouped = defaultdict(list)
     for row in rows:
@@ -75,15 +59,9 @@ def balanced_sample(rows: list[dict], target_size: int, priority_folders: list[s
             if taken >= limit or len(selected) >= target_size:
                 break
 
-    for folder in priority_folders:
-        take(folder, min_priority_per_folder)
-        if len(selected) >= target_size:
-            return selected
-
     folder_order = sorted(
         grouped,
         key=lambda folder: (
-            0 if folder in priority_folders else 1,
             -len(grouped[folder]),
             folder,
         ),
@@ -110,14 +88,11 @@ def main():
         raise ValueError("Private adaptation manifests must stay at or below 100 rows.")
 
     rows = load_manifest(args.source_manifest)
-    priority_folders = load_priority_folders(args.query_suite)
     effective_target_size = min(args.target_size, len(rows))
     selected = balanced_sample(
         rows=rows,
         target_size=effective_target_size,
-        priority_folders=priority_folders,
         seed=args.seed,
-        min_priority_per_folder=args.min_priority_per_folder,
     )
 
     if len(selected) < effective_target_size:

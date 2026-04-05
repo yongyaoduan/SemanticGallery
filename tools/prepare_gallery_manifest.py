@@ -20,25 +20,8 @@ def parse_args():
     parser.add_argument("--gallery-path", required=True)
     parser.add_argument("--output-path", default="./datasets/private_gallery/manifest.jsonl")
     parser.add_argument("--val-ratio", type=float, default=0.1)
-    parser.add_argument(
-        "--aliases-json",
-        default=None,
-        help="Optional JSON file mapping folder names to additional caption aliases.",
-    )
     parser.add_argument("--source-name", default="private_gallery_weak")
     return parser.parse_args()
-
-
-def load_folder_aliases(path: str | None) -> dict[str, list[str]]:
-    aliases = {key: list(value) for key, value in DEFAULT_FOLDER_ALIASES.items()}
-    if not path:
-        return aliases
-
-    payload = json.loads(Path(path).expanduser().resolve().read_text(encoding="utf-8"))
-    for key, values in payload.items():
-        if isinstance(values, list):
-            aliases[key] = [str(item).strip() for item in values if str(item).strip()]
-    return aliases
 
 
 def collect_images(gallery_path: Path):
@@ -82,11 +65,14 @@ def main():
     gallery_path = Path(args.gallery_path).expanduser().resolve()
     output_path = Path(args.output_path).expanduser().resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    folder_aliases = load_folder_aliases(args.aliases_json)
 
     rows = []
     for image_path in collect_images(gallery_path):
-        captions = infer_captions(gallery_path=gallery_path, image_path=image_path, folder_aliases=folder_aliases)
+        captions = infer_captions(
+            gallery_path=gallery_path,
+            image_path=image_path,
+            folder_aliases=DEFAULT_FOLDER_ALIASES,
+        )
         if not captions:
             continue
         rows.append(

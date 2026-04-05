@@ -1,6 +1,6 @@
 # Benchmarks
 
-SemanticGallery ships the MLX runtime on Apple Silicon. `PyTorch + MPS` is kept only as a reference baseline for selection.
+This page records the selection result that led to the shipped MLX runtime on Apple Silicon. The benchmark harness and raw local artifacts are kept outside the Git repo; end users do not need them to run SemanticGallery.
 
 ## MPS vs MLX
 
@@ -32,6 +32,8 @@ SemanticGallery ships the MLX runtime on Apple Silicon. `PyTorch + MPS` is kept 
 | Deployment | PyTorch + MPS | `float16` | `19.92 ms / query` | `21.79 ms` |
 | Deployment | MLX | `bfloat16` | `9.02 ms / query` | `10.35 ms` |
 
+`failed` means the measured configuration did not stay numerically stable enough to complete the workload.
+
 ## Analysis
 
 - Training: `MLX bfloat16` reduces mean step time from `231.24 ms` to `165.20 ms` relative to `PyTorch + MPS float32`, a `28.6%` latency reduction
@@ -41,3 +43,46 @@ SemanticGallery ships the MLX runtime on Apple Silicon. `PyTorch + MPS` is kept 
 - Deployment: `MLX bfloat16` is `54.7%` faster than `PyTorch + MPS float16` on the same gallery bank
 
 The shipped runtime is pure MLX because it gives the best low-precision performance on Apple Silicon while keeping the runtime stack simpler.
+
+## Training Path Selection
+
+`Base` is the released `google/siglip2-base-patch16-224` checkpoint with no repo-specific tuning. `Stage 1` fine-tunes that checkpoint on Flickr30k plus Screen2Words. `Stage 2 only` starts from the base checkpoint and runs only gallery-specific adaptation. `Stage 1 -> Stage 2` starts from the published Stage 1 checkpoint and then runs gallery-specific adaptation.
+
+These numbers are reference selection results recorded during development. They document why the repo ships `Stage 1 -> Stage 2`; they are not reproduced by an in-repo benchmark command.
+
+### Reference Setup
+
+| Item | Value |
+| --- | --- |
+| Retrieval task | text-to-image retrieval |
+| Base model | `google/siglip2-base-patch16-224` |
+| Local adaptation data | up to `100` images from a personal gallery with phone photos and screenshots |
+| Public held-out test | Flickr30k official test split: `1000` images, `5000` caption queries |
+| Screenshot held-out test | Screen2Words official test split: `4310` images, `21550` caption queries |
+| Metrics | `Recall@1`, `Recall@5`, `Recall@10` |
+
+### Flickr30k Test
+
+| Model | R@1 | R@5 | R@10 |
+| --- | ---: | ---: | ---: |
+| Base | `0.7630` | `0.9240` | `0.9564` |
+| Stage 1 only | `0.7864` | `0.9410` | `0.9672` |
+| Stage 2 only | `0.7646` | `0.9246` | `0.9568` |
+| Stage 1 -> Stage 2 | `0.7870` | `0.9408` | `0.9670` |
+
+### Screen2Words Test
+
+| Model | R@1 | R@5 | R@10 |
+| --- | ---: | ---: | ---: |
+| Base | `0.1185` | `0.2538` | `0.3254` |
+| Stage 1 only | `0.1570` | `0.3210` | `0.3989` |
+| Stage 2 only | `0.1187` | `0.2553` | `0.3271` |
+| Stage 1 -> Stage 2 | `0.1574` | `0.3211` | `0.3992` |
+
+### Analysis
+
+- `Stage 2 only` does not replace public fine-tuning
+- `Stage 1` provides nearly all held-out retrieval gain
+- `Stage 1 -> Stage 2` keeps those public gains while adding gallery-specific adaptation
+
+The shipped training path is `Stage 1 -> Stage 2`.

@@ -1,8 +1,11 @@
 # Data Preparation
 
-SemanticGallery uses different data paths for local adaptation and full retraining.
+SemanticGallery has two data-preparation paths:
 
-## Local Adaptation
+- the default path used by `quickstart.sh` for gallery-specific adaptation
+- the full public-data path used only when reproducing or replacing the published Stage 1 checkpoint
+
+## Default Path
 
 ```bash
 PRIVATE_GALLERY_PATH=/absolute/path/to/gallery ./scripts/prepare_data.sh
@@ -13,24 +16,94 @@ This command scans the target gallery and writes:
 - `datasets/private_gallery_local/full_manifest.jsonl`
 - `datasets/private_gallery_local/private_adapt_data.jsonl`
 
-`private_adapt_data.jsonl` is capped at `100` rows. If the gallery has fewer usable images, it keeps the available rows.
+`full_manifest.jsonl` contains one row per usable image in the target gallery. `private_adapt_data.jsonl` is the capped subset used by the default Stage 2 adaptation path. The cap is `100` rows. If the gallery has fewer usable images, it keeps the available rows.
 
-## Stage 2 Public Anchor
+### Manifest Schema
 
-The default path does not download the full public corpus again. It reuses a fixed-seed public anchor published at [Lucas20250626/semanticgallery-stage2-public-anchor](https://huggingface.co/datasets/Lucas20250626/semanticgallery-stage2-public-anchor).
+Each JSONL row uses the same schema:
 
-The public anchor contains:
+| Field | Meaning |
+| --- | --- |
+| `image_path` | Absolute path to the image on local disk |
+| `captions` | Weak labels derived from path-based heuristics |
+| `weak_groups` | Lightweight grouping tags such as `kind:screenshot` or `folder:camera` |
+| `split` | Deterministic `train` or `val` assignment |
+| `source` | Source label written into the manifest |
+
+The default Stage 2 loss does not optimize on private captions. The private rows keep the shared JSONL schema so the same loaders can parse both public and local manifests, but the gallery-specific loss reads image paths and image augmentations, not private text labels. Those weak captions still matter at runtime because the search engine can use them for a small metadata-based ranking boost.
+
+### Caption and Group Rules
+
+The local manifest builder does not run OCR or a caption model. It applies fixed heuristics:
+
+- the first path segment under the gallery root
+- alias expansion from the built-in folder map, or from `ALIASES_JSON` if provided
+- filename stem with `_` and `-` converted to spaces
+- extra caption phrases for paths that look like screenshots
+- extra caption phrases for paths that look like document or scan images
+
+The built-in alias map covers these names:
+
+- `Screenshots`
+- `Camera`
+- `Documents`
+- `Favorites`
+- `Downloads`
+
+`weak_groups` are generated from:
+
+- the first path segment under the gallery root, written as `folder:<top-level-name>`
+- inferred kind such as `screenshot`, `document`, `camera`, `chat`, or `photo`
+- file extension
+- filename family prefixes such as `Screenshot`, `IMG_`, `MVIMG_`, `PXL_`, `DSC_`, `mmexport`, and `scan`
+- app identifiers extracted from filenames that match `com.example.app`
+
+### Optional Inputs
+
+`prepare_data.sh` accepts two optional inputs:
+
+| Input | Purpose |
+| --- | --- |
+| `ALIASES_JSON` | Adds extra weak labels for named folders before `full_manifest.jsonl` is written |
+| `QUERY_SUITE_PATH` | Prioritizes folders that appear in the local query suite when the capped `private_adapt_data.jsonl` subset is sampled |
+
+`ALIASES_JSON` is a JSON object that maps folder names to extra phrases:
+
+```json
+{
+  "Screenshots": ["receipt screenshot", "chat screenshot"],
+  "Camera": ["daily photo", "phone photo"]
+}
+```
+
+`QUERY_SUITE_PATH` is optional. It should be a JSON array of objects with a `positives` field:
+
+```json
+[
+  {
+    "query": "receipt screenshot",
+    "positives": ["Screenshots", "Documents"]
+  }
+]
+```
+
+When `QUERY_SUITE_PATH` is present, the sampler:
+
+- reads priority folder names from `positives`
+- compares those names against `image_path.parent.name` from the source manifest
+- takes up to `4` rows from each priority folder first
+- fills the remaining cap with a balanced round-robin pass over the remaining folders
+
+This is a different notion of `folder` from the `folder:*` weak group written into `full_manifest.jsonl`. `folder:*` uses the first path segment under the gallery root. The capped-subset sampler uses the immediate parent directory name of each image path.
+
+## Stage 2 Public Reference Set
+
+The default path does not download the full public corpus again. It reuses a published `1000`-row public reference set:
 
 - `500` Flickr30k rows
 - `500` Screen2Words rows
 
-Why this exists:
-
-- avoid re-downloading the full public corpus during normal operation
-- keep Stage 2 fast enough for local use
-- preserve public text-image supervision while adapting to the target gallery
-
-With the default `80/20` train / validation split, Stage 2 sees `800` public train rows and `200` public validation rows.
+The default Stage 2 path uses that small public reference set to keep a public text-image signal active without asking every user to download the full public corpus again.
 
 ## Full Public Corpus
 
@@ -40,9 +113,9 @@ PREPARE_PUBLIC_DATA=1 PRIVATE_GALLERY_PATH=/absolute/path/to/gallery ./scripts/p
 
 This path prepares:
 
-- Flickr30k under `datasets/flickr30k/`
-- Screen2Words train under `datasets/screen2words_train/`
-- Screen2Words val under `datasets/screen2words_val/`
-- the same local adaptation manifests under `datasets/private_gallery_local/`
+- `datasets/flickr30k/`
+- `datasets/screen2words_train/`
+- `datasets/screen2words_val/`
+- the same local manifests under `datasets/private_gallery_local/`
 
-Use it only when you want to reproduce or replace the published Stage 1 checkpoint.
+Use the full public-data path only when you want to reproduce or replace the published Stage 1 checkpoint.

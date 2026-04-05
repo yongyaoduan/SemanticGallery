@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import re
 from pathlib import Path
 
 
@@ -16,10 +15,6 @@ DEFAULT_FOLDER_ALIASES = {
     "Favorites": ["favorite photo", "liked image"],
     "Downloads": ["downloaded image"],
 }
-
-APP_ID_PATTERN = re.compile(r"(com\.[a-z0-9_]+(?:\.[a-z0-9_]+)+)")
-
-
 def parse_args():
     parser = argparse.ArgumentParser(description="Create a weakly supervised manifest from a private gallery.")
     parser.add_argument("--gallery-path", required=True)
@@ -55,12 +50,6 @@ def collect_images(gallery_path: Path):
         and path.suffix.lower() in SUPPORTED_SUFFIXES
     )
 
-
-def normalize_group_token(value: str) -> str:
-    normalized = re.sub(r"[^a-z0-9._]+", "-", value.strip().lower())
-    return normalized.strip("-._")
-
-
 def deterministic_split(path: Path, val_ratio: float) -> str:
     digest = hashlib.sha1(path.as_posix().encode("utf-8")).hexdigest()
     bucket = int(digest[:8], 16) / 0xFFFFFFFF
@@ -88,46 +77,6 @@ def infer_captions(gallery_path: Path, image_path: Path, folder_aliases: dict[st
 
     return sorted(caption for caption in captions if caption and len(caption.strip()) > 1)
 
-
-def infer_weak_groups(gallery_path: Path, image_path: Path):
-    relative_parts = image_path.relative_to(gallery_path).parts
-    top_level = normalize_group_token(relative_parts[0]) if relative_parts else ""
-    stem_lower = image_path.stem.lower()
-    path_lower = image_path.as_posix().lower()
-    groups = set()
-
-    if top_level:
-        groups.add(f"folder:{top_level}")
-
-    if "screenshot" in path_lower or stem_lower.startswith("screenshot"):
-        groups.add("kind:screenshot")
-        groups.add("family:screenshot")
-    elif any(marker in path_lower for marker in ("document", "scan", "receipt", "invoice", "passport", "idcard", "paper")):
-        groups.add("kind:document")
-    elif stem_lower.startswith(("img_", "mvimg_", "pxl_", "dsc_")) or top_level in {"camera", "dcim"}:
-        groups.add("kind:camera")
-        groups.add("family:camera")
-    elif any(marker in path_lower for marker in ("mmexport", "wechat", "chat", "tencent.mm")):
-        groups.add("kind:chat")
-    else:
-        groups.add("kind:photo")
-
-    suffix = image_path.suffix.lower().lstrip(".")
-    if suffix:
-        groups.add(f"ext:{suffix}")
-
-    if stem_lower.startswith("mmexport"):
-        groups.add("family:wechat-export")
-    if stem_lower.startswith("scan"):
-        groups.add("family:scan")
-
-    app_match = APP_ID_PATTERN.search(stem_lower)
-    if app_match:
-        groups.add(f"app:{app_match.group(1)}")
-
-    return sorted(groups)
-
-
 def main():
     args = parse_args()
     gallery_path = Path(args.gallery_path).expanduser().resolve()
@@ -144,7 +93,6 @@ def main():
             {
                 "image_path": image_path.as_posix(),
                 "captions": captions,
-                "weak_groups": infer_weak_groups(gallery_path=gallery_path, image_path=image_path),
                 "split": deterministic_split(image_path, args.val_ratio),
                 "source": args.source_name,
             }

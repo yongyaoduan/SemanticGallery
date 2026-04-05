@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import random
-import re
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,79 +31,11 @@ class ImageTextRecord:
     image_path: str
     captions: tuple[str, ...]
     source: str
-    weak_groups: tuple[str, ...] = ()
-
-
-APP_ID_PATTERN = re.compile(r"(com\.[a-z0-9_]+(?:\.[a-z0-9_]+)+)")
 
 
 def maybe_register_heif_support() -> None:
     if register_heif_opener is not None:
         register_heif_opener()
-
-
-def normalize_group_token(value: str) -> str:
-    normalized = re.sub(r"[^a-z0-9._]+", "-", value.strip().lower())
-    return normalized.strip("-._")
-
-
-def infer_private_kind(image_path: str | Path) -> str:
-    path = Path(image_path)
-    path_lower = path.as_posix().lower()
-    stem_lower = path.stem.lower()
-    parent_names = {part.lower() for part in path.parts}
-
-    if "screenshot" in path_lower or stem_lower.startswith("screenshot"):
-        return "screenshot"
-    if any(marker in path_lower for marker in ("document", "scan", "receipt", "invoice", "passport", "idcard", "paper")):
-        return "document"
-    if stem_lower.startswith(("img_", "mvimg_", "pxl_", "dsc_")) or {"camera", "dcim"} & parent_names:
-        return "camera"
-    if any(marker in path_lower for marker in ("mmexport", "wechat", "chat", "tencent.mm")):
-        return "chat"
-    return "photo"
-
-
-def infer_private_weak_groups(image_path: str | Path, *, source_name: str = "") -> tuple[str, ...]:
-    path = Path(image_path)
-    path_lower = path.as_posix().lower()
-    stem_lower = path.stem.lower()
-    groups = set()
-
-    parent_name = normalize_group_token(path.parent.name)
-    if parent_name:
-        groups.add(f"folder:{parent_name}")
-
-    kind = infer_private_kind(path)
-    groups.add(f"kind:{kind}")
-
-    suffix = path.suffix.lower().lstrip(".")
-    if suffix:
-        groups.add(f"ext:{suffix}")
-
-    family_prefixes = {
-        "screenshot": "screenshot",
-        "img_": "camera",
-        "mvimg_": "camera",
-        "pxl_": "camera",
-        "dsc_": "camera",
-        "mmexport": "wechat-export",
-        "scan": "scan",
-    }
-    for prefix, family in family_prefixes.items():
-        if stem_lower.startswith(prefix):
-            groups.add(f"family:{family}")
-
-    app_match = APP_ID_PATTERN.search(stem_lower)
-    if app_match:
-        groups.add(f"app:{app_match.group(1)}")
-
-    normalized_source = normalize_group_token(source_name)
-    if normalized_source and normalized_source not in {"flickr30k", "screen2words"}:
-        groups.add(f"source:{normalized_source}")
-
-    return tuple(sorted(group for group in groups if group))
-
 
 def precision_name_to_dtype(name: str):
     import mlx.core as mx
@@ -345,11 +276,6 @@ def load_manifest_records(manifest_paths: Sequence[str | Path], split: str) -> l
                         image_path=image_path.as_posix(),
                         captions=normalized_captions,
                         source=str(row.get("source", manifest_path.stem)).strip() or manifest_path.stem,
-                        weak_groups=tuple(
-                            group.strip()
-                            for group in row.get("weak_groups", [])
-                            if isinstance(group, str) and group.strip()
-                        ),
                     )
                 )
     return records
@@ -361,21 +287,6 @@ def build_training_records(dataset_path: str | None, manifest_paths: Sequence[st
         records.extend(load_flickr30k_records(dataset_path, split))
     if manifest_paths:
         records.extend(load_manifest_records(manifest_paths, split))
-    records = [
-        ImageTextRecord(
-            image_path=record.image_path,
-            captions=record.captions,
-            source=record.source,
-            weak_groups=record.weak_groups
-            if record.weak_groups
-            else (
-                infer_private_weak_groups(record.image_path, source_name=record.source)
-                if classify_source(record.source, record.image_path) == "private"
-                else ()
-            ),
-        )
-        for record in records
-    ]
     if not records:
         raise ValueError("No records loaded. Provide Flickr30k and/or manifest paths.")
     return records

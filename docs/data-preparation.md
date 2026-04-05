@@ -26,7 +26,6 @@ Each JSONL row uses the same schema:
 | --- | --- |
 | `image_path` | Absolute path to the image on local disk |
 | `captions` | Weak labels derived from path-based heuristics |
-| `weak_groups` | Lightweight grouping tags such as `kind:screenshot` or `folder:camera` |
 | `split` | Deterministic `train` or `val` assignment |
 | `source` | Source label written into the manifest |
 
@@ -49,14 +48,6 @@ The built-in alias map covers these names:
 - `Documents`
 - `Favorites`
 - `Downloads`
-
-`weak_groups` are generated from:
-
-- the first path segment under the gallery root, written as `folder:<top-level-name>`
-- inferred kind such as `screenshot`, `document`, `camera`, `chat`, or `photo`
-- file extension
-- filename family prefixes such as `Screenshot`, `IMG_`, `MVIMG_`, `PXL_`, `DSC_`, `mmexport`, and `scan`
-- app identifiers extracted from filenames that match `com.example.app`
 
 ### Optional Inputs
 
@@ -93,8 +84,6 @@ When `QUERY_SUITE_PATH` is present, the sampler:
 - compares those names against `image_path.parent.name` from the source manifest
 - takes up to `4` rows from each priority folder first
 - fills the remaining cap with a balanced round-robin pass over the remaining folders
-
-This is a different notion of `folder` from the `folder:*` weak group written into `full_manifest.jsonl`. `folder:*` uses the first path segment under the gallery root. The capped-subset sampler uses the immediate parent directory name of each image path.
 
 ## Stage 2 Public Reference Set
 

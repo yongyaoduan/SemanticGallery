@@ -22,7 +22,7 @@ This page lists the user-facing environment variables exposed by the shell entry
 | `RUNTIME_DIR` | Default: `logs/runtime`. Set a directory path to change where `quickstart.sh` writes the startup log and PID file. |
 | `LOG_FILE_PATH` | Default: `logs/runtime/semanticgallery_<port>.log`. Set a file path to override the startup log location. |
 | `PID_FILE_PATH` | Default: `logs/runtime/semanticgallery_<port>.pid`. Set a file path to override the PID file location. |
-| `STARTUP_TIMEOUT_SECONDS` | Default: `300`. Set a larger integer to give adaptation and startup more time before failure. Set a smaller integer to fail faster. |
+| `STARTUP_TIMEOUT_SECONDS` | Default: `300`. This is an idle timeout, not a total startup limit. SemanticGallery keeps waiting as long as new startup log lines keep arriving. It fails only when no new startup log output appears for this many seconds. Set a larger integer if your machine can pause for long stretches during startup. |
 | `FORCE` | Default: `0`. `0`: reuse the existing gallery bank when local index files already exist. `1`: ignore the existing gallery bank, re-encode the gallery, and rewrite the search config. |
 | `ENCODE_BATCH_SIZE` | Default: `8`. Set a larger positive integer to improve throughput at the cost of higher memory use. Set a smaller value to reduce memory use. |
 

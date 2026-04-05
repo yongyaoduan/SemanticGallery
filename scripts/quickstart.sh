@@ -23,13 +23,46 @@ STARTUP_TIMEOUT_SECONDS="${STARTUP_TIMEOUT_SECONDS:-300}"
 [[ -n "$GALLERY_DIR" ]] || die "set GALLERY_DIR to the folder you want to search."
 require_dir "$GALLERY_DIR"
 
-ensure_env
+mkdir -p "$RUNTIME_DIR"
+
+if [[ -f "$PID_FILE_PATH" ]]; then
+  existing_pid="$(tr -d '[:space:]' < "$PID_FILE_PATH")"
+  if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null; then
+    die "SemanticGallery is already running on pid $existing_pid. Stop it first or use a different PORT."
+  fi
+  rm -f "$PID_FILE_PATH"
+fi
+
+ensure_port_free "$HOST" "$PORT"
+
+: > "$LOG_FILE_PATH"
+
+log_step() {
+  printf '[%s] %s\n' "$(timestamp)" "$*" | tee -a "$LOG_FILE_PATH" >&2
+}
+
+log_kv() {
+  printf '  - %s\n' "$*" | tee -a "$LOG_FILE_PATH" >&2
+}
+
+die() {
+  printf 'error: %s\n' "$*" | tee -a "$LOG_FILE_PATH" >&2
+  exit 1
+}
+
+run_logged() {
+  "$@" > >(tee -a "$LOG_FILE_PATH") 2> >(tee -a "$LOG_FILE_PATH" >&2)
+}
+
+run_logged ensure_env
 
 resolved_gallery_dir="$(cd "$GALLERY_DIR" && pwd)"
-resolved_stage1_weights_file_path="$(resolve_stage1_weights_file "$STAGE1_WEIGHTS_FILE_PATH")"
+resolved_stage1_weights_file_path="$(
+  resolve_stage1_weights_file "$STAGE1_WEIGHTS_FILE_PATH" 2> >(tee -a "$LOG_FILE_PATH" >&2)
+)"
 
 log_step "Preparing adaptation data"
-PREPARE_PUBLIC_DATA=0 PRIVATE_GALLERY_DIR="$resolved_gallery_dir" "$ROOT_DIR/scripts/prepare_data.sh"
+run_logged env PREPARE_PUBLIC_DATA=0 PRIVATE_GALLERY_DIR="$resolved_gallery_dir" "$ROOT_DIR/scripts/prepare_data.sh"
 
 require_file "$PRIVATE_MANIFEST_FILE_PATH"
 
@@ -90,16 +123,6 @@ else
   log_kv "weights_file_path=$FINAL_WEIGHTS_FILE_PATH"
 fi
 
-mkdir -p "$RUNTIME_DIR"
-
-if [[ -f "$PID_FILE_PATH" ]]; then
-  existing_pid="$(tr -d '[:space:]' < "$PID_FILE_PATH")"
-  if [[ -n "$existing_pid" ]] && kill -0 "$existing_pid" 2>/dev/null; then
-    die "SemanticGallery is already running on pid $existing_pid. Stop it first or use a different PORT."
-  fi
-  rm -f "$PID_FILE_PATH"
-fi
-
 log_step "Starting SemanticGallery in background"
 log_kv "host=$HOST"
 log_kv "port=$PORT"
@@ -132,7 +155,7 @@ env.update(
     }
 )
 
-with log_path.open("wb") as handle:
+with log_path.open("ab") as handle:
     proc = subprocess.Popen(
         ["/bin/bash", str(root_dir / "scripts" / "deploy_best.sh")],
         cwd=root_dir.as_posix(),
@@ -164,10 +187,10 @@ import time
 
 log_path = Path("${LOG_FILE_PATH}")
 pid = int("${pid}")
-timeout_seconds = int("${STARTUP_TIMEOUT_SECONDS}")
+idle_timeout_seconds = int("${STARTUP_TIMEOUT_SECONDS}")
 ready_marker = "Uvicorn running on http://"
-offset = 0
-deadline = time.time() + timeout_seconds
+offset = log_path.stat().st_size if log_path.exists() else 0
+last_progress_time = time.time()
 ready_logged = False
 ready_socket = False
 
@@ -183,13 +206,14 @@ def socket_ready(host: str, port: int) -> bool:
         sock.settimeout(0.5)
         return sock.connect_ex((host, port)) == 0
 
-while time.time() < deadline:
+while True:
     if log_path.exists():
         data = log_path.read_text(encoding="utf-8", errors="replace")
         if len(data) > offset:
             sys.stderr.write(data[offset:])
             sys.stderr.flush()
             offset = len(data)
+            last_progress_time = time.time()
         if ready_marker in data:
             ready_logged = True
 
@@ -198,6 +222,8 @@ while time.time() < deadline:
         break
 
     if not pid_alive(pid):
+        break
+    if idle_timeout_seconds > 0 and time.time() - last_progress_time > idle_timeout_seconds:
         break
     time.sleep(0.25)
 
@@ -217,8 +243,9 @@ if not pid_alive(pid):
     sys.exit(1)
 
 sys.stderr.write(
-    f"error: Timed out after {timeout_seconds}s waiting for SemanticGallery to report readiness. "
-    f"See {log_path}\n"
+    f"error: No new startup log output was observed for {idle_timeout_seconds}s. "
+    f"The background job may be stalled. Check {log_path} or set a larger "
+    f"STARTUP_TIMEOUT_SECONDS if your machine pauses for long stretches during startup.\n"
 )
 sys.exit(1)
 PY

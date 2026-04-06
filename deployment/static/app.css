@@ -248,6 +248,11 @@ body.is-locked {
     color: #1a73e8;
 }
 
+.selection-icon-button.is-active:not(.selection-delete) {
+    background: #e8f0fe;
+    color: #1a73e8;
+}
+
 .selection-delete {
     background: #b91c1c;
     color: #ffffff;

@@ -5,6 +5,7 @@ const imagePickerButton = document.getElementById("image-picker-button");
 const selectionToggle = document.getElementById("selection-toggle");
 const selectionBar = document.getElementById("selection-bar");
 const selectionCount = document.getElementById("selection-count");
+const selectionSelectAll = document.getElementById("selection-select-all");
 const selectionClear = document.getElementById("selection-clear");
 const selectionDelete = document.getElementById("selection-delete");
 const imageQueryChip = document.getElementById("image-query-chip");
@@ -127,10 +128,18 @@ const updateUrlForImage = (limit) => {
 };
 
 const updateSelectionBar = () => {
+    const resultCards = [...results.querySelectorAll(".result-card")];
+    const selectableCount = resultCards.length;
+    const selectedCount = selectedPaths.size;
+    const allSelected = selectableCount > 0 && selectedCount === selectableCount;
     selectionBar.hidden = !selectionMode;
     selectionToggle.classList.toggle("is-active", selectionMode);
-    selectionCount.textContent = `已选 ${selectedPaths.size} 张`;
-    selectionDelete.disabled = selectedPaths.size === 0;
+    selectionCount.textContent = `已选 ${selectedCount} 张`;
+    selectionDelete.disabled = selectedCount === 0;
+    selectionSelectAll.disabled = selectableCount === 0;
+    selectionSelectAll.classList.toggle("is-active", allSelected);
+    selectionSelectAll.setAttribute("aria-label", allSelected ? "取消全选当前结果" : "全选当前结果");
+    selectionSelectAll.title = allSelected ? "取消全选当前结果" : "全选当前结果";
 };
 
 const exitSelectionMode = () => {
@@ -153,6 +162,20 @@ const toggleSelectionMode = () => {
     if (!selectionMode) {
         selectedPaths = new Set();
     }
+    updateSelectionBar();
+    renderSelectionState();
+};
+
+const toggleSelectAll = () => {
+    const resultCards = [...results.querySelectorAll(".result-card")];
+    if (!resultCards.length) {
+        return;
+    }
+    const allPaths = resultCards
+        .map((card) => card.dataset.relativePath || "")
+        .filter((path) => path);
+    const allSelected = allPaths.length > 0 && allPaths.every((path) => selectedPaths.has(path));
+    selectedPaths = allSelected ? new Set() : new Set(allPaths);
     updateSelectionBar();
     renderSelectionState();
 };
@@ -425,6 +448,10 @@ imagePickerButton.addEventListener("click", () => {
 
 selectionToggle.addEventListener("click", () => {
     toggleSelectionMode();
+});
+
+selectionSelectAll.addEventListener("click", () => {
+    toggleSelectAll();
 });
 
 selectionClear.addEventListener("click", () => {

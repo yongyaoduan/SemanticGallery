@@ -15,6 +15,7 @@ This command scans the user gallery and writes:
 
 - `datasets/private_gallery_local/full_manifest.jsonl`
 - `datasets/private_gallery_local/private_adapt_data.jsonl`
+- `datasets/private_gallery_local/private_adapt_data_state.json`
 
 `full_manifest.jsonl` contains one row per usable image in the target gallery. `private_adapt_data.jsonl` is the capped subset used by the default Stage 2 adaptation path. The cap is `100` rows. If the gallery has fewer usable images, it keeps the available rows.
 
@@ -23,6 +24,8 @@ This command scans the user gallery and writes:
 - if fewer than `10%` are missing, it reuses the existing file unchanged
 - if `10%` or more are missing, it resamples the capped set from the current gallery
 - it does not silently fill missing rows with new images below that threshold
+
+`private_adapt_data_state.json` stores the tracked rows, the current missing-row count, and a content signature for the existing tracked files. Quick start uses that content signature to rerun Stage 2 when a tracked local image changes in place even if `private_adapt_data.jsonl` itself is reused unchanged.
 
 ### Schema
 
@@ -77,5 +80,6 @@ This path prepares the public training data for Stage 1 and the local files buil
 - `datasets/screen2words_val/`
 - `datasets/private_gallery_local/full_manifest.jsonl`
 - `datasets/private_gallery_local/private_adapt_data.jsonl`
+- `datasets/private_gallery_local/private_adapt_data_state.json`
 
 Use this path only when you want to reproduce or replace the published Stage 1 checkpoint.

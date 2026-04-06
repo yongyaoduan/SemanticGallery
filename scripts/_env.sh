@@ -240,7 +240,13 @@ gallery_file_count = 0
 gallery_total_bytes = 0
 supported_suffixes = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".heic", ".heif"}
 
-for image_path in sorted(path for path in gallery_root.rglob("*") if path.is_file() and path.suffix.lower() in supported_suffixes):
+for image_path in sorted(
+    path
+    for path in gallery_root.rglob("*")
+    if path.is_file()
+    and not any(part.startswith(".") for part in path.relative_to(gallery_root).parts)
+    and path.suffix.lower() in supported_suffixes
+):
     stat = image_path.stat()
     relative_path = image_path.relative_to(gallery_root).as_posix()
     gallery_state.update(relative_path.encode("utf-8"))

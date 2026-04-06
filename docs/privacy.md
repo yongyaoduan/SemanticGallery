@@ -12,10 +12,17 @@
 
 - `datasets/private_gallery_local/full_manifest.jsonl` stores absolute image paths and weak labels
 - `datasets/private_gallery_local/private_adapt_data.jsonl` stores the capped local adaptation subset
-- `logs/semanticgallery_private_data_adapted/quickstart_state.json` stores the gallery path, Stage 1 checkpoint path, and manifest hash used for quickstart reuse
+- `datasets/private_gallery_local/private_adapt_data_state.json` stores the tracked local adaptation rows, missing-row counts, and the content signature used for Stage 2 reuse
+- `logs/semanticgallery_private_data_adapted/weights.safetensors` stores the latest local Stage 2 weights
+- `logs/semanticgallery_private_data_adapted/history.jsonl` stores per-epoch local adaptation history
+- `logs/semanticgallery_private_data_adapted/summary.json` stores the latest local adaptation summary
+- `logs/semanticgallery_private_data_adapted/quickstart_state.json` stores the gallery path, Stage 1 checkpoint path, and Stage 2 reuse signature used by quickstart
 - `deployment/search_config_gallery_mlx.json` stores the selected gallery path, model path, index paths, and metadata-manifest path
 - `deployment/*_mlx_siglip2.paths.txt` stores absolute gallery paths for the current index
+- `deployment/*_mlx_siglip2_embeddings.npy` stores the current gallery embedding bank
 - `deployment/*_mlx_siglip2_skipped.json` stores skipped local files and error reasons
+- `deployment/*_mlx_siglip2_file_state.json` stores per-image cache state for incremental gallery sync
+- `deployment/*_mlx_siglip2_bank_state.json` stores gallery-level cache state for incremental gallery sync
 - `deployment/.thumb_cache/` stores generated JPEG thumbnails for the web UI
 - `deployment/.delete_staging/` stores temporary files while delete rewrites the local index
 

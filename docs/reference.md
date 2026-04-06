@@ -46,7 +46,7 @@ These variables apply when `deploy_best.sh` is run directly.
 
 | Variable | Details |
 | --- | --- |
-| `PRIVATE_GALLERY_DIR` | Required unless the local JSONL files already exist. Set an absolute path to the user's gallery to build `full_manifest.jsonl` and `private_adapt_data.jsonl`. `prepare_data.sh` always refreshes `full_manifest.jsonl`. It reuses `private_adapt_data.jsonl` until at least `10%` of its tracked files are missing from the current gallery. |
+| `PRIVATE_GALLERY_DIR` | Required unless the local JSONL files already exist. Set an absolute path to the user's gallery to build `full_manifest.jsonl`, `private_adapt_data.jsonl`, and `private_adapt_data_state.json`. `prepare_data.sh` always refreshes `full_manifest.jsonl`. It reuses `private_adapt_data.jsonl` until at least `10%` of its tracked files are missing from the current gallery, but it still refreshes `private_adapt_data_state.json` so Stage 2 can detect in-place edits to tracked local images. |
 | `PREPARE_PUBLIC_DATA` | Default: `0`. `0`: build only the local gallery files used by Stage 2 adaptation. `1`: also download and prepare Flickr30k plus Screen2Words for full Stage 1 retraining. |
 | `FORCE` | Default: `0`. `0`: reuse local public Stage 1 datasets when they already meet the row threshold. `1`: refresh those public datasets even if the local copies already exist. |
 

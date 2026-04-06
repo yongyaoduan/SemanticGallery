@@ -9,6 +9,7 @@ FINAL_RUN_DIR="$ROOT_DIR/logs/semanticgallery_private_data_adapted"
 FINAL_WEIGHTS_FILE_PATH="$FINAL_RUN_DIR/weights.safetensors"
 QUICKSTART_STATE_FILE_PATH="$FINAL_RUN_DIR/quickstart_state.json"
 PRIVATE_MANIFEST_FILE_PATH="$ROOT_DIR/datasets/private_gallery_local/private_adapt_data.jsonl"
+PRIVATE_MANIFEST_STATE_FILE_PATH="$ROOT_DIR/datasets/private_gallery_local/private_adapt_data_state.json"
 STAGE1_WEIGHTS_FILE_PATH="${STAGE1_WEIGHTS_FILE_PATH:-$LOCAL_STAGE1_WEIGHTS_FILE_PATH}"
 MAX_EPOCHS_STAGE2="${MAX_EPOCHS_STAGE2:-1}"
 TRAIN_BATCH_SIZE="${TRAIN_BATCH_SIZE:-4}"
@@ -77,6 +78,7 @@ log_step "Preparing adaptation data"
 run_logged env PREPARE_PUBLIC_DATA=0 PRIVATE_GALLERY_DIR="$resolved_gallery_dir" "$ROOT_DIR/scripts/prepare_data.sh"
 
 require_file "$PRIVATE_MANIFEST_FILE_PATH"
+require_file "$PRIVATE_MANIFEST_STATE_FILE_PATH"
 
 current_signature="$(
   "$PYTHON_BIN_PATH" - <<PY
@@ -87,6 +89,7 @@ from pathlib import Path
 gallery_dir = Path("${resolved_gallery_dir}").resolve().as_posix()
 stage1_weights_path = Path("${resolved_stage1_weights_file_path}").resolve()
 manifest = Path("${PRIVATE_MANIFEST_FILE_PATH}").resolve()
+manifest_state = json.loads(Path("${PRIVATE_MANIFEST_STATE_FILE_PATH}").resolve().read_text(encoding="utf-8"))
 
 digest = hashlib.sha256()
 with stage1_weights_path.open("rb") as handle:
@@ -101,6 +104,8 @@ payload = {
     "stage1_weights_file_path": stage1_weights_path.as_posix(),
     "stage1_weights_sha256": digest.hexdigest(),
     "manifest_sha1": hashlib.sha1(manifest.read_bytes()).hexdigest(),
+    "manifest_content_signature": manifest_state.get("content_signature", ""),
+    "manifest_edited_rows": manifest_state.get("edited_rows", 0),
     "stage2_config": {
         "epochs": "${MAX_EPOCHS_STAGE2}",
         "train_batch_size": "${TRAIN_BATCH_SIZE}",
@@ -138,7 +143,7 @@ PY
 fi
 
 if [[ ! -f "$FINAL_WEIGHTS_FILE_PATH" || "$current_signature" != "$stored_signature" ]]; then
-  STAGE1_WEIGHTS_FILE_PATH="$resolved_stage1_weights_file_path" "$ROOT_DIR/scripts/adapt_best.sh"
+  run_logged env STAGE1_WEIGHTS_FILE_PATH="$resolved_stage1_weights_file_path" "$ROOT_DIR/scripts/adapt_best.sh"
   CURRENT_SIGNATURE="$current_signature" "$PYTHON_BIN_PATH" - <<PY
 import json
 import os

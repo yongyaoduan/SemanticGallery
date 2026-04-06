@@ -46,7 +46,7 @@ If startup fails, `quickstart.sh` exits with a non-zero status and leaves the fu
 Later runs rebuild the full local manifest, then apply three reuse checks:
 
 - The capped local adaptation set stays fixed unless at least `10%` of its tracked files are missing.
-- Stage 2 reruns only when the published Stage 1 checkpoint, the capped local adaptation set, or the Stage 2 hyperparameters change.
+- Stage 2 reruns only when the published Stage 1 checkpoint, the capped local adaptation set, the tracked local image contents, or the Stage 2 hyperparameters change.
 - The gallery index synchronizes only when the gallery contents or the final weights change. Unchanged images are reused, new or changed images are encoded, and deleted images are removed from the local index.
 
 Deletes from the web UI update the local index immediately. Use `FORCE=1` only when you want to force a manual gallery re-encode:
@@ -63,10 +63,11 @@ FORCE=1 GALLERY_DIR=/absolute/path/to/gallery ./scripts/quickstart.sh
 - `.cache/semanticgallery/stage2_public_anchor/`: downloaded Stage 2 public reference set
 - `datasets/private_gallery_local/full_manifest.jsonl`: full local manifest with absolute paths and weak labels
 - `datasets/private_gallery_local/private_adapt_data.jsonl`: capped local adaptation subset
+- `datasets/private_gallery_local/private_adapt_data_state.json`: tracked local adaptation rows, missing-count state, and the content signature used for Stage 2 reuse
 - `logs/runtime/`: startup log and PID file for the running web service
-- `logs/semanticgallery_private_data_adapted/`: local adaptation weights, training summary, and `quickstart_state.json`
+- `logs/semanticgallery_private_data_adapted/`: local adaptation weights, training history, training summary, and `quickstart_state.json`
 - `deployment/search_config_gallery_mlx.json`: runtime search configuration
-- `deployment/*_mlx_siglip2_embeddings.npy`, `deployment/*_mlx_siglip2.paths.txt`, `deployment/*_mlx_siglip2_skipped.json`: generated search index files for the selected gallery
+- `deployment/*_mlx_siglip2_embeddings.npy`, `deployment/*_mlx_siglip2.paths.txt`, `deployment/*_mlx_siglip2_skipped.json`, `deployment/*_mlx_siglip2_file_state.json`, `deployment/*_mlx_siglip2_bank_state.json`: generated search index and cache-state files for the selected gallery
 - `deployment/.thumb_cache/`: cached JPEG thumbnails for the web UI
 - `deployment/.delete_staging/`: temporary files used while delete rewrites the local index
 

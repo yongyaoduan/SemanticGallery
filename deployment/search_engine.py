@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 import tempfile
 from pathlib import Path
@@ -17,6 +18,17 @@ from deployment.search_utils import apply_metadata_boost, is_searchable_query, l
 from mlx_pipeline import l2_normalize, load_mlx_siglip_model, open_rgb_image
 
 SUPPORTED_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".heic", ".heif"}
+
+
+@dataclass
+class IndexSnapshot:
+    image_paths: list[str]
+    embeddings: np.ndarray
+    metadata_texts: list[str] | None
+    indexed_paths_text: str | None
+    metadata_manifest_text: str | None
+    skipped_images_text: str | None
+    file_state_text: str | None
 
 
 def load_search_config(config_path: str) -> dict:
@@ -195,11 +207,94 @@ class BaseSearchEngine:
         if changed:
             self._atomic_write_json(file_state_path, kept_rows)
 
+    def snapshot_index_state(self) -> IndexSnapshot:
+        indexed_paths_text = None
+        metadata_manifest_text = None
+        skipped_images_text = None
+        file_state_text = None
+
+        indexed_paths_value = self.config.get("indexed_paths_file")
+        if indexed_paths_value:
+            indexed_paths_path = Path(indexed_paths_value).expanduser().resolve()
+            if indexed_paths_path.exists():
+                indexed_paths_text = indexed_paths_path.read_text(encoding="utf-8")
+
+        metadata_manifest_value = self.config.get("metadata_manifest")
+        if metadata_manifest_value:
+            metadata_manifest_path = Path(metadata_manifest_value).expanduser().resolve()
+            if metadata_manifest_path.exists():
+                metadata_manifest_text = metadata_manifest_path.read_text(encoding="utf-8")
+
+        skipped_images_value = self.config.get("skipped_images_file")
+        if skipped_images_value:
+            skipped_images_path = Path(skipped_images_value).expanduser().resolve()
+            if skipped_images_path.exists():
+                skipped_images_text = skipped_images_path.read_text(encoding="utf-8")
+
+        file_state_value = self.config.get("file_state_file")
+        if file_state_value:
+            file_state_path = Path(file_state_value).expanduser().resolve()
+            if file_state_path.exists():
+                file_state_text = file_state_path.read_text(encoding="utf-8")
+
+        return IndexSnapshot(
+            image_paths=list(self.image_paths),
+            embeddings=np.asarray(self.embeddings, dtype=np.float32).copy(),
+            metadata_texts=list(self.metadata_texts) if self.metadata_texts is not None else None,
+            indexed_paths_text=indexed_paths_text,
+            metadata_manifest_text=metadata_manifest_text,
+            skipped_images_text=skipped_images_text,
+            file_state_text=file_state_text,
+        )
+
+    def restore_index_state(self, snapshot: IndexSnapshot) -> None:
+        self.image_paths = list(snapshot.image_paths)
+        self.embeddings = np.asarray(snapshot.embeddings, dtype=np.float32)
+        self.metadata_texts = list(snapshot.metadata_texts) if snapshot.metadata_texts is not None else None
+
+        indexed_paths_value = self.config.get("indexed_paths_file")
+        if indexed_paths_value:
+            indexed_paths_path = Path(indexed_paths_value).expanduser().resolve()
+            if snapshot.indexed_paths_text is None:
+                indexed_paths_path.unlink(missing_ok=True)
+            else:
+                self._atomic_write_text(indexed_paths_path, snapshot.indexed_paths_text)
+
+        embeddings_value = self.config.get("embeddings_file")
+        if embeddings_value:
+            embeddings_path = Path(embeddings_value).expanduser().resolve()
+            self._atomic_save_npy(embeddings_path, snapshot.embeddings)
+
+        metadata_manifest_value = self.config.get("metadata_manifest")
+        if metadata_manifest_value:
+            metadata_manifest_path = Path(metadata_manifest_value).expanduser().resolve()
+            if snapshot.metadata_manifest_text is None:
+                metadata_manifest_path.unlink(missing_ok=True)
+            else:
+                self._atomic_write_text(metadata_manifest_path, snapshot.metadata_manifest_text)
+
+        skipped_images_value = self.config.get("skipped_images_file")
+        if skipped_images_value:
+            skipped_images_path = Path(skipped_images_value).expanduser().resolve()
+            if snapshot.skipped_images_text is None:
+                skipped_images_path.unlink(missing_ok=True)
+            else:
+                self._atomic_write_text(skipped_images_path, snapshot.skipped_images_text)
+
+        file_state_value = self.config.get("file_state_file")
+        if file_state_value:
+            file_state_path = Path(file_state_value).expanduser().resolve()
+            if snapshot.file_state_text is None:
+                file_state_path.unlink(missing_ok=True)
+            else:
+                self._atomic_write_text(file_state_path, snapshot.file_state_text)
+
     def delete_image(self, image_path: str | Path) -> bool:
         removed = self.delete_images([image_path])
         return Path(image_path).expanduser().resolve().as_posix() in removed
 
     def delete_images(self, image_paths: list[str | Path]) -> set[str]:
+        snapshot = self.snapshot_index_state()
         target_paths = []
         seen_paths = set()
         for image_path in image_paths:
@@ -212,43 +307,47 @@ class BaseSearchEngine:
         if not target_paths:
             return set()
 
-        target_set = set(target_paths)
-        keep_indices = []
-        removed_index_paths = set()
-        for idx, candidate in enumerate(self.image_paths):
-            candidate_path = Path(candidate).expanduser().resolve()
-            if candidate_path in target_set:
-                removed_index_paths.add(candidate_path.as_posix())
-                continue
-            keep_indices.append(idx)
+        try:
+            target_set = set(target_paths)
+            keep_indices = []
+            removed_index_paths = set()
+            for idx, candidate in enumerate(self.image_paths):
+                candidate_path = Path(candidate).expanduser().resolve()
+                if candidate_path in target_set:
+                    removed_index_paths.add(candidate_path.as_posix())
+                    continue
+                keep_indices.append(idx)
 
-        if len(keep_indices) != len(self.image_paths):
-            new_image_paths = [self.image_paths[idx] for idx in keep_indices]
-            new_embeddings = np.asarray(self.embeddings)[keep_indices].astype("float32", copy=False)
-            new_metadata_texts = None
-            if self.metadata_texts is not None:
-                new_metadata_texts = [self.metadata_texts[idx] for idx in keep_indices]
+            if len(keep_indices) != len(self.image_paths):
+                new_image_paths = [self.image_paths[idx] for idx in keep_indices]
+                new_embeddings = np.asarray(self.embeddings)[keep_indices].astype("float32", copy=False)
+                new_metadata_texts = None
+                if self.metadata_texts is not None:
+                    new_metadata_texts = [self.metadata_texts[idx] for idx in keep_indices]
 
-            indexed_paths_value = self.config.get("indexed_paths_file")
-            embeddings_value = self.config.get("embeddings_file")
-            if indexed_paths_value:
-                indexed_paths_path = Path(indexed_paths_value).expanduser().resolve()
-                indexed_payload = "\n".join(new_image_paths)
-                if indexed_payload:
-                    indexed_payload += "\n"
-                self._atomic_write_text(indexed_paths_path, indexed_payload)
-            if embeddings_value:
-                embeddings_path = Path(embeddings_value).expanduser().resolve()
-                self._atomic_save_npy(embeddings_path, new_embeddings)
+                indexed_paths_value = self.config.get("indexed_paths_file")
+                embeddings_value = self.config.get("embeddings_file")
+                if indexed_paths_value:
+                    indexed_paths_path = Path(indexed_paths_value).expanduser().resolve()
+                    indexed_payload = "\n".join(new_image_paths)
+                    if indexed_payload:
+                        indexed_payload += "\n"
+                    self._atomic_write_text(indexed_paths_path, indexed_payload)
+                if embeddings_value:
+                    embeddings_path = Path(embeddings_value).expanduser().resolve()
+                    self._atomic_save_npy(embeddings_path, new_embeddings)
 
-            self.image_paths = new_image_paths
-            self.embeddings = new_embeddings
-            self.metadata_texts = new_metadata_texts
+                self.image_paths = new_image_paths
+                self.embeddings = new_embeddings
+                self.metadata_texts = new_metadata_texts
 
-        self._remove_from_metadata_manifest_many(target_set)
-        self._remove_from_skipped_images_many(target_set)
-        self._remove_from_file_state_many(target_set)
-        return removed_index_paths
+            self._remove_from_metadata_manifest_many(target_set)
+            self._remove_from_skipped_images_many(target_set)
+            self._remove_from_file_state_many(target_set)
+            return removed_index_paths
+        except Exception:
+            self.restore_index_state(snapshot)
+            raise
 
 
 class MLXSigLIPSearchEngine(BaseSearchEngine):

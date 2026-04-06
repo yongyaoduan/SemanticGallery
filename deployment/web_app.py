@@ -15,7 +15,7 @@ from urllib.parse import quote, unquote
 from uuid import uuid4
 
 from fastapi import Body, FastAPI, File, HTTPException, Query, Request, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -30,6 +30,8 @@ from deployment.search_utils import is_searchable_query
 
 THUMBNAIL_SIZE = (512, 512)
 HEIF_SUFFIXES = {".heic", ".heif"}
+MAX_IMAGE_UPLOAD_BYTES = 20 * 1024 * 1024
+MAX_BATCH_DELETE_PATHS = 200
 
 try:
     from pillow_heif import register_heif_opener
@@ -49,7 +51,7 @@ def parse_args():
 
 
 class BatchDeletePayload(BaseModel):
-    paths: list[str]
+    paths: list[str] = Field(min_length=1, max_length=MAX_BATCH_DELETE_PATHS)
 
 
 class LocalGalleryServer:
@@ -90,9 +92,11 @@ class LocalGalleryServer:
 
         @app.post("/api/search/image")
         async def search_image(image: UploadFile = File(...), limit: int = Query(25, ge=1, le=100)):
-            file_bytes = await image.read()
+            file_bytes = await image.read(MAX_IMAGE_UPLOAD_BYTES + 1)
             if not file_bytes:
                 raise HTTPException(status_code=400, detail="Image is empty.")
+            if len(file_bytes) > MAX_IMAGE_UPLOAD_BYTES:
+                raise HTTPException(status_code=413, detail="Image is too large.")
 
             query_image = self._read_uploaded_image(file_bytes)
             with self.engine_lock:
@@ -141,6 +145,7 @@ class LocalGalleryServer:
             started_at = time.perf_counter()
             with self.engine_lock:
                 staged_entries = []
+                snapshot = self.search_engine.snapshot_index_state()
                 try:
                     seen_paths = set()
                     for image_path in payload.paths:
@@ -164,9 +169,15 @@ class LocalGalleryServer:
                         )
                         for file_path, staged_path, thumbnail_path in staged_entries:
                             self.metadata_cache.pop(file_path.as_posix(), None)
-                            if thumbnail_path.exists():
-                                thumbnail_path.unlink()
-                            staged_path.unlink(missing_ok=True)
+                            try:
+                                if thumbnail_path.exists():
+                                    thumbnail_path.unlink()
+                            except OSError:
+                                pass
+                            try:
+                                staged_path.unlink(missing_ok=True)
+                            except OSError:
+                                pass
                             deleted.append(
                                 {
                                     "fileName": file_path.name,
@@ -179,6 +190,7 @@ class LocalGalleryServer:
                         for file_path, staged_path, _thumbnail_path in reversed(staged_entries):
                             if staged_path.exists():
                                 shutil.move(staged_path.as_posix(), file_path.as_posix())
+                    self.search_engine.restore_index_state(snapshot)
                     raise
 
             duration_ms = (time.perf_counter() - started_at) * 1000
@@ -306,17 +318,25 @@ class LocalGalleryServer:
         staged_path = self._staging_path(file_path)
         staged_path.parent.mkdir(parents=True, exist_ok=True)
 
+        snapshot = self.search_engine.snapshot_index_state()
         shutil.move(file_path.as_posix(), staged_path.as_posix())
         try:
             removed_from_index = self.search_engine.delete_image(file_path)
             self.metadata_cache.pop(file_path.as_posix(), None)
-            if thumbnail_path.exists():
-                thumbnail_path.unlink()
-            staged_path.unlink(missing_ok=True)
+            try:
+                if thumbnail_path.exists():
+                    thumbnail_path.unlink()
+            except OSError:
+                pass
+            try:
+                staged_path.unlink(missing_ok=True)
+            except OSError:
+                pass
             return removed_from_index
         except Exception:
             if staged_path.exists():
                 shutil.move(staged_path.as_posix(), file_path.as_posix())
+            self.search_engine.restore_index_state(snapshot)
             raise
 
     def _ensure_thumbnail(self, file_path: Path) -> Path:

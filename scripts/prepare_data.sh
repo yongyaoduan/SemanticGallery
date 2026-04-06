@@ -7,7 +7,8 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_env.sh"
 ensure_env
 
 PRIVATE_GALLERY_DIR="${PRIVATE_GALLERY_DIR:-${1:-}}"
-PRIVATE_DATA_DIR="$ROOT_DIR/datasets/private_gallery_local"
+PRIVATE_DATA_DIR="${PRIVATE_DATA_DIR:-$ROOT_DIR/datasets/private_gallery_local}"
+PRIVATE_ADAPT_STATE_FILE_PATH="$PRIVATE_DATA_DIR/private_adapt_data_state.json"
 PREPARE_PUBLIC_DATA="${PREPARE_PUBLIC_DATA:-0}"
 MIN_FLICKR_IMAGES="${MIN_FLICKR_IMAGES:-30000}"
 MIN_SCREEN2WORDS_TRAIN_ROWS="${MIN_SCREEN2WORDS_TRAIN_ROWS:-15000}"
@@ -137,6 +138,105 @@ print(json.dumps({
 PY
 }
 
+refresh_private_adapt_state() {
+  "$PYTHON_BIN_PATH" - <<PY
+import hashlib
+import json
+from pathlib import Path
+
+adapt_path = Path("${PRIVATE_DATA_DIR}/private_adapt_data.jsonl").expanduser().resolve()
+state_path = Path("${PRIVATE_ADAPT_STATE_FILE_PATH}").expanduser().resolve()
+gallery_root = Path("${PRIVATE_GALLERY_DIR}").expanduser().resolve() if "${PRIVATE_GALLERY_DIR}" else None
+
+if not adapt_path.exists():
+    raise SystemExit("missing adaptation set")
+
+rows = [json.loads(line) for line in adapt_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+previous_rows = {}
+if state_path.exists():
+    try:
+        payload = json.loads(state_path.read_text(encoding="utf-8"))
+        for row in payload.get("rows", []):
+            if isinstance(row, dict) and row.get("image_path"):
+                previous_rows[row["image_path"]] = row
+    except Exception:
+        previous_rows = {}
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while True:
+            chunk = handle.read(1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
+
+tracked_rows = len(rows)
+missing_rows = 0
+edited_rows = 0
+state_rows = []
+signature = hashlib.sha256()
+
+for row in rows:
+    image_path = Path(row["image_path"]).expanduser().resolve()
+    key = image_path.as_posix()
+    previous = previous_rows.get(key, {})
+
+    under_gallery = True
+    if gallery_root is not None:
+        try:
+            image_path.relative_to(gallery_root)
+        except ValueError:
+            under_gallery = False
+
+    exists = under_gallery and image_path.is_file()
+    sha256 = previous.get("sha256", "")
+    size = previous.get("size")
+    mtime_ns = previous.get("mtime_ns")
+
+    if exists:
+        sha256 = sha256_file(image_path)
+        stat = image_path.stat()
+        size = stat.st_size
+        mtime_ns = stat.st_mtime_ns
+        previous_sha = previous.get("sha256")
+        if previous_sha and previous_sha != sha256:
+            edited_rows += 1
+    else:
+        missing_rows += 1
+
+    state_rows.append(
+        {
+            "image_path": key,
+            "exists": exists,
+            "sha256": sha256,
+            "size": size,
+            "mtime_ns": mtime_ns,
+        }
+    )
+    signature.update(key.encode("utf-8"))
+    signature.update(b"\\0")
+    signature.update(sha256.encode("utf-8"))
+    signature.update(b"\\n")
+
+payload = {
+    "tracked_rows": tracked_rows,
+    "missing_rows": missing_rows,
+    "edited_rows": edited_rows,
+    "content_signature": signature.hexdigest(),
+    "rows": state_rows,
+}
+state_path.parent.mkdir(parents=True, exist_ok=True)
+state_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+print(f"state_path={state_path}")
+print(f"tracked_rows={tracked_rows}")
+print(f"missing_rows={missing_rows}")
+print(f"edited_rows={edited_rows}")
+print(f"content_signature={payload['content_signature']}")
+PY
+}
+
 json_field() {
   local payload="$1"
   local field="$2"
@@ -236,5 +336,8 @@ if [[ -n "$PRIVATE_GALLERY_DIR" ]]; then
 elif [[ ! -f "$PRIVATE_DATA_DIR/full_manifest.jsonl" || ! -f "$PRIVATE_DATA_DIR/private_adapt_data.jsonl" ]]; then
   die "set PRIVATE_GALLERY_DIR to build the capped private adaptation set."
 fi
+
+log_step "Refreshing private adaptation state"
+refresh_private_adapt_state
 
 printf 'data_ready=%s\n' "$ROOT_DIR/datasets"

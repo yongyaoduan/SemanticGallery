@@ -11,7 +11,7 @@ import sys
 import time
 from pathlib import Path
 from threading import RLock
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 from uuid import uuid4
 
 from fastapi import Body, FastAPI, File, HTTPException, Query, Request, UploadFile
@@ -182,8 +182,9 @@ class LocalGalleryServer:
                     raise
 
             duration_ms = (time.perf_counter() - started_at) * 1000
+            missing_preview = ",".join(missing[:5]) if missing else "-"
             print(
-                f"batch_delete_complete requested={len(payload.paths)} deleted={len(deleted)} missing={len(missing)} duration_ms={duration_ms:.1f}",
+                f"batch_delete_complete requested={len(payload.paths)} deleted={len(deleted)} missing={len(missing)} duration_ms={duration_ms:.1f} missing_preview={missing_preview}",
                 flush=True,
             )
             return {"deleted": deleted, "missing": missing}
@@ -215,7 +216,7 @@ class LocalGalleryServer:
         return payload
 
     def _resolve_gallery_file(self, image_path: str) -> Path:
-        candidate = (self.gallery_path / image_path).resolve()
+        candidate = (self.gallery_path / unquote(image_path)).resolve()
         try:
             candidate.relative_to(self.gallery_path)
         except ValueError as exc:

@@ -28,8 +28,9 @@
 ## Reindex Behavior
 
 - Deletes from the web UI update the local index immediately.
+- If the Stage 2 adaptation weights change, `quickstart.sh` rebuilds the gallery index automatically before it starts the web app.
 - New or changed gallery files are not picked up automatically when an existing gallery bank is reused.
-- Rerun `quickstart.sh` with `FORCE=1` to rebuild the gallery index after gallery changes or after rerunning gallery-specific adaptation with different weights.
+- Rerun `quickstart.sh` with `FORCE=1` to rebuild the gallery index after gallery files change, or when you want to force a manual rebuild.
 
 ## Stage 2 Limit
 

@@ -2,6 +2,11 @@ const form = document.getElementById("search-form");
 const input = document.getElementById("search-input");
 const imageInput = document.getElementById("image-input");
 const imagePickerButton = document.getElementById("image-picker-button");
+const selectionToggle = document.getElementById("selection-toggle");
+const selectionBar = document.getElementById("selection-bar");
+const selectionCount = document.getElementById("selection-count");
+const selectionClear = document.getElementById("selection-clear");
+const selectionDelete = document.getElementById("selection-delete");
 const imageQueryChip = document.getElementById("image-query-chip");
 const imageQueryPreview = document.getElementById("image-query-preview");
 const imageQueryLabel = document.getElementById("image-query-label");
@@ -27,6 +32,8 @@ let activeDeleteUrl = "";
 let activeFileName = "";
 let activeSimilarUrl = "";
 let activeImageQuery = null;
+let selectionMode = false;
+let selectedPaths = new Set();
 const DEFAULT_LIMIT = 25;
 
 const isSearchableQuery = (text) => {
@@ -119,6 +126,37 @@ const updateUrlForImage = (limit) => {
     history.replaceState(null, "", `${window.location.pathname}${params.toString() ? `?${params}` : ""}`);
 };
 
+const updateSelectionBar = () => {
+    selectionBar.hidden = !selectionMode;
+    selectionToggle.classList.toggle("is-active", selectionMode);
+    selectionCount.textContent = `已选 ${selectedPaths.size} 张`;
+    selectionDelete.disabled = selectedPaths.size === 0;
+};
+
+const exitSelectionMode = () => {
+    selectionMode = false;
+    selectedPaths = new Set();
+    updateSelectionBar();
+    renderSelectionState();
+};
+
+const renderSelectionState = () => {
+    for (const card of results.querySelectorAll(".result-card")) {
+        const isSelected = selectedPaths.has(card.dataset.relativePath || "");
+        card.classList.toggle("is-selectable", selectionMode);
+        card.classList.toggle("is-selected", isSelected);
+    }
+};
+
+const toggleSelectionMode = () => {
+    selectionMode = !selectionMode;
+    if (!selectionMode) {
+        selectedPaths = new Set();
+    }
+    updateSelectionBar();
+    renderSelectionState();
+};
+
 const closeLightbox = () => {
     lightbox.hidden = true;
     lightboxImage.removeAttribute("src");
@@ -188,8 +226,15 @@ const openLightbox = async ({ fullUrl, altText, fileName, metadataUrl, deleteUrl
 const renderResults = (items) => {
     results.replaceChildren();
     if (!items.length) {
+        if (selectionMode) {
+            selectedPaths = new Set();
+            updateSelectionBar();
+        }
         return;
     }
+
+    const availablePaths = new Set(items.map((item) => item.relativePath));
+    selectedPaths = new Set([...selectedPaths].filter((path) => availablePaths.has(path)));
 
     const fragment = document.createDocumentFragment();
     for (const item of items) {
@@ -197,6 +242,7 @@ const renderResults = (items) => {
         const image = node.querySelector(".result-thumb");
         image.src = item.thumbnailUrl;
         image.alt = item.name;
+        node.dataset.relativePath = item.relativePath;
         node.dataset.fullUrl = item.fullUrl;
         node.dataset.altText = item.name;
         node.dataset.fileName = item.fileName;
@@ -206,6 +252,8 @@ const renderResults = (items) => {
         fragment.appendChild(node);
     }
     results.appendChild(fragment);
+    updateSelectionBar();
+    renderSelectionState();
 };
 
 const deleteActiveImage = async () => {
@@ -229,6 +277,34 @@ const deleteActiveImage = async () => {
     } catch (error) {
         lightboxDelete.disabled = false;
         window.alert("删除失败，请重试。");
+    }
+};
+
+const deleteSelectedImages = async () => {
+    if (selectedPaths.size === 0 || selectionDelete.disabled) {
+        return;
+    }
+    const confirmed = window.confirm(`永久删除已选中的 ${selectedPaths.size} 张图片？删除后会同时从本地相册和当前索引中移除，且无法恢复。`);
+    if (!confirmed) {
+        return;
+    }
+
+    selectionDelete.disabled = true;
+    try {
+        const response = await fetch("/api/images/batch-delete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ paths: [...selectedPaths] }),
+        });
+        if (!response.ok) {
+            throw new Error("batch-delete");
+        }
+        selectedPaths = new Set();
+        updateSelectionBar();
+        await runCurrentSearch();
+    } catch (error) {
+        selectionDelete.disabled = false;
+        window.alert("批量删除失败，请重试。");
     }
 };
 
@@ -347,6 +423,18 @@ imagePickerButton.addEventListener("click", () => {
     imageInput.click();
 });
 
+selectionToggle.addEventListener("click", () => {
+    toggleSelectionMode();
+});
+
+selectionClear.addEventListener("click", () => {
+    exitSelectionMode();
+});
+
+selectionDelete.addEventListener("click", async () => {
+    await deleteSelectedImages();
+});
+
 imageInput.addEventListener("change", async (event) => {
     const [file] = event.target.files || [];
     await applyUploadImageFile(file);
@@ -382,6 +470,22 @@ results.addEventListener("click", (event) => {
     if (!card) {
         return;
     }
+
+    if (selectionMode) {
+        const relativePath = card.dataset.relativePath || "";
+        if (!relativePath) {
+            return;
+        }
+        if (selectedPaths.has(relativePath)) {
+            selectedPaths.delete(relativePath);
+        } else {
+            selectedPaths.add(relativePath);
+        }
+        updateSelectionBar();
+        renderSelectionState();
+        return;
+    }
+
     openLightbox({
         fullUrl: card.dataset.fullUrl,
         altText: card.dataset.altText || "",
@@ -429,6 +533,10 @@ lightbox.addEventListener("click", (event) => {
 document.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && !lightbox.hidden) {
         closeLightbox();
+        return;
+    }
+    if (event.key === "Escape" && selectionMode) {
+        exitSelectionMode();
     }
 });
 
@@ -443,6 +551,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     if (!Number.isNaN(limit) && [25, 50, 100].includes(limit)) {
         limitSelect.value = String(limit);
     }
+    updateSelectionBar();
     if (!query) {
         return;
     }

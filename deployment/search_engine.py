@@ -86,6 +86,9 @@ class BaseSearchEngine:
         return image_path.resolve()
 
     def _remove_from_metadata_manifest(self, image_path: Path) -> None:
+        self._remove_from_metadata_manifest_many({image_path})
+
+    def _remove_from_metadata_manifest_many(self, image_paths: set[Path]) -> None:
         manifest_value = self.config.get("metadata_manifest")
         if not manifest_value:
             return
@@ -111,7 +114,7 @@ class BaseSearchEngine:
                     kept_lines.append(line)
                     continue
                 resolved = self._resolve_manifest_image_path(manifest_path, row_path)
-                if resolved == image_path:
+                if resolved in image_paths:
                     changed = True
                     continue
                 kept_lines.append(line)
@@ -123,6 +126,9 @@ class BaseSearchEngine:
             self._atomic_write_text(manifest_path, content)
 
     def _remove_from_skipped_images(self, image_path: Path) -> None:
+        self._remove_from_skipped_images_many({image_path})
+
+    def _remove_from_skipped_images_many(self, image_paths: set[Path]) -> None:
         skipped_value = self.config.get("skipped_images_file")
         if not skipped_value:
             return
@@ -146,7 +152,7 @@ class BaseSearchEngine:
                 kept_rows.append(row)
                 continue
             resolved = self._resolve_manifest_image_path(skipped_path, row_path)
-            if resolved == image_path:
+            if resolved in image_paths:
                 changed = True
                 continue
             kept_rows.append(row)
@@ -155,22 +161,38 @@ class BaseSearchEngine:
             self._atomic_write_json(skipped_path, kept_rows)
 
     def delete_image(self, image_path: str | Path) -> bool:
-        target_path = Path(image_path).expanduser().resolve()
-        removed_from_index = False
-        index = next(
-            (
-                idx
-                for idx, candidate in enumerate(self.image_paths)
-                if Path(candidate).expanduser().resolve() == target_path
-            ),
-            -1,
-        )
-        if index >= 0:
-            new_image_paths = [path for idx, path in enumerate(self.image_paths) if idx != index]
-            new_embeddings = np.delete(np.asarray(self.embeddings), index, axis=0).astype("float32", copy=False)
+        removed = self.delete_images([image_path])
+        return Path(image_path).expanduser().resolve().as_posix() in removed
+
+    def delete_images(self, image_paths: list[str | Path]) -> set[str]:
+        target_paths = []
+        seen_paths = set()
+        for image_path in image_paths:
+            target = Path(image_path).expanduser().resolve()
+            if target in seen_paths:
+                continue
+            seen_paths.add(target)
+            target_paths.append(target)
+
+        if not target_paths:
+            return set()
+
+        target_set = set(target_paths)
+        keep_indices = []
+        removed_index_paths = set()
+        for idx, candidate in enumerate(self.image_paths):
+            candidate_path = Path(candidate).expanduser().resolve()
+            if candidate_path in target_set:
+                removed_index_paths.add(candidate_path.as_posix())
+                continue
+            keep_indices.append(idx)
+
+        if len(keep_indices) != len(self.image_paths):
+            new_image_paths = [self.image_paths[idx] for idx in keep_indices]
+            new_embeddings = np.asarray(self.embeddings)[keep_indices].astype("float32", copy=False)
             new_metadata_texts = None
             if self.metadata_texts is not None:
-                new_metadata_texts = [text for idx, text in enumerate(self.metadata_texts) if idx != index]
+                new_metadata_texts = [self.metadata_texts[idx] for idx in keep_indices]
 
             indexed_paths_value = self.config.get("indexed_paths_file")
             embeddings_value = self.config.get("embeddings_file")
@@ -187,11 +209,10 @@ class BaseSearchEngine:
             self.image_paths = new_image_paths
             self.embeddings = new_embeddings
             self.metadata_texts = new_metadata_texts
-            removed_from_index = True
 
-        self._remove_from_metadata_manifest(target_path)
-        self._remove_from_skipped_images(target_path)
-        return removed_from_index
+        self._remove_from_metadata_manifest_many(target_set)
+        self._remove_from_skipped_images_many(target_set)
+        return removed_index_paths
 
 
 class MLXSigLIPSearchEngine(BaseSearchEngine):

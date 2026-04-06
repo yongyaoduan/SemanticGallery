@@ -198,6 +198,45 @@ resolve_weights_file() {
   printf '%s\n' "$(resolve_stage1_weights_file "${STAGE1_WEIGHTS_FILE_PATH:-$LOCAL_STAGE1_WEIGHTS_FILE_PATH}")"
 }
 
+build_gallery_bank_state() {
+  local gallery_dir="$1"
+  local model_dir="$2"
+  local precision="$3"
+  local weights_file_path="${4:-}"
+  "$PYTHON_BIN_PATH" - <<PY
+import hashlib
+import json
+from pathlib import Path
+
+gallery_dir = Path("${gallery_dir}").expanduser().resolve().as_posix()
+model_dir = Path("${model_dir}").expanduser().resolve().as_posix()
+precision = "${precision}"
+weights_value = "${weights_file_path}"
+weights_file_path = Path(weights_value).expanduser().resolve() if weights_value else None
+
+def sha256_file(path: Path) -> str | None:
+    if not path.exists():
+        return None
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while True:
+            chunk = handle.read(1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
+
+payload = {
+    "gallery_dir": gallery_dir,
+    "model_dir": model_dir,
+    "precision": precision,
+    "weights_file_path": weights_file_path.as_posix() if weights_file_path else "",
+    "weights_file_sha256": sha256_file(weights_file_path) if weights_file_path else None,
+}
+print(json.dumps(payload, sort_keys=True, ensure_ascii=False))
+PY
+}
+
 prepare_mlx_search_config() {
   local gallery_dir="$1"
   local config_file_path="$2"
@@ -208,11 +247,17 @@ prepare_mlx_search_config() {
   local embeddings_file_path
   local indexed_paths_file_path
   local skipped_images_file_path
+  local bank_state_file_path
   local legacy_embeddings_file_path
   local legacy_indexed_paths_file_path
   local legacy_skipped_images_file_path
+  local legacy_bank_state_file_path
   local encode_cmd
   local create_cmd
+  local current_bank_state
+  local stored_bank_state
+  local rebuild_gallery_bank
+  local rebuild_reason
 
   ensure_mlx_model
 
@@ -221,14 +266,36 @@ prepare_mlx_search_config() {
   embeddings_file_path="$ROOT_DIR/deployment/${gallery_name}_mlx_siglip2_embeddings.npy"
   indexed_paths_file_path="$ROOT_DIR/deployment/${gallery_name}_mlx_siglip2.paths.txt"
   skipped_images_file_path="$ROOT_DIR/deployment/${gallery_name}_mlx_siglip2_skipped.json"
+  bank_state_file_path="$ROOT_DIR/deployment/${gallery_name}_mlx_siglip2_bank_state.json"
   legacy_embeddings_file_path="$ROOT_DIR/deployment/${gallery_name}_siglip2_embeddings.npy"
   legacy_indexed_paths_file_path="$ROOT_DIR/deployment/${gallery_name}_siglip2.paths.txt"
   legacy_skipped_images_file_path="$ROOT_DIR/deployment/${gallery_name}_siglip2_skipped.json"
+  legacy_bank_state_file_path="$ROOT_DIR/deployment/${gallery_name}_siglip2_bank_state.json"
 
   if [[ "${FORCE:-0}" != "1" && -z "$weights_file_path" && -f "$legacy_embeddings_file_path" && -f "$legacy_indexed_paths_file_path" && -f "$legacy_skipped_images_file_path" ]]; then
     embeddings_file_path="$legacy_embeddings_file_path"
     indexed_paths_file_path="$legacy_indexed_paths_file_path"
     skipped_images_file_path="$legacy_skipped_images_file_path"
+    bank_state_file_path="$legacy_bank_state_file_path"
+  fi
+
+  current_bank_state="$(build_gallery_bank_state "$gallery_dir" "$MLX_MODEL_DIR" "$precision" "$weights_file_path")"
+  stored_bank_state=""
+  if [[ -f "$bank_state_file_path" ]]; then
+    stored_bank_state="$(cat "$bank_state_file_path")"
+  fi
+
+  rebuild_gallery_bank=0
+  rebuild_reason=""
+  if [[ "${FORCE:-0}" == "1" ]]; then
+    rebuild_gallery_bank=1
+    rebuild_reason="force=1"
+  elif [[ ! -f "$embeddings_file_path" || ! -f "$indexed_paths_file_path" || ! -f "$skipped_images_file_path" || ! -f "$bank_state_file_path" ]]; then
+    rebuild_gallery_bank=1
+    rebuild_reason="artifacts missing"
+  elif [[ "$current_bank_state" != "$stored_bank_state" ]]; then
+    rebuild_gallery_bank=1
+    rebuild_reason="gallery bank state changed"
   fi
 
   log_step "Preparing gallery bank"
@@ -241,8 +308,9 @@ prepare_mlx_search_config() {
     log_kv "weights_file_path=none"
   fi
 
-  if [[ "${FORCE:-0}" == "1" || ! -f "$embeddings_file_path" || ! -f "$indexed_paths_file_path" || ! -f "$skipped_images_file_path" ]]; then
+  if [[ "$rebuild_gallery_bank" == "1" ]]; then
     log_step "Encoding gallery images"
+    log_kv "reason=$rebuild_reason"
     encode_cmd=(
       "$PYTHON_BIN_PATH" "$ROOT_DIR/deployment/encode_gallery.py"
       --gallery-path "$gallery_dir"
@@ -257,6 +325,7 @@ prepare_mlx_search_config() {
       encode_cmd+=(--weights-file "$weights_file_path")
     fi
     "${encode_cmd[@]}"
+    printf '%s\n' "$current_bank_state" > "$bank_state_file_path"
   else
     log_step "Reusing existing gallery bank"
     log_kv "embeddings_file_path=$embeddings_file_path"

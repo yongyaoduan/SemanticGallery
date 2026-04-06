@@ -18,6 +18,12 @@
             <path d="M14 14l1 -1c.928 -.893 2.072 -.893 3 0l2 2" />
           </svg>
         </button>
+        <button id="selection-toggle" type="button" aria-label="批量选择图片">
+          <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M9 11l3 3l8 -8" />
+            <path d="M20 12v7a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h9" />
+          </svg>
+        </button>
         <div id="image-query-chip" class="image-query-chip" hidden>
           <img id="image-query-preview" class="image-query-preview" alt="" />
           <span id="image-query-label" class="image-query-label"></span>
@@ -50,6 +56,40 @@
           </svg>
         </button>
       </form>
+
+      <div id="selection-bar" class="selection-bar" hidden>
+        <span id="selection-count" class="selection-count">已选 0 张</span>
+        <div class="selection-actions">
+          <button
+            id="selection-clear"
+            class="selection-icon-button"
+            type="button"
+            aria-label="取消选择"
+            title="取消选择"
+          >
+            <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M18 6l-12 12" />
+              <path d="M6 6l12 12" />
+            </svg>
+          </button>
+          <button
+            id="selection-delete"
+            class="selection-icon-button selection-delete"
+            type="button"
+            aria-label="删除所选图片"
+            title="删除所选图片"
+            disabled
+          >
+            <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 7l16 0" />
+              <path d="M10 11l0 6" />
+              <path d="M14 11l0 6" />
+              <path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12" />
+              <path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3" />
+            </svg>
+          </button>
+        </div>
+      </div>
 
       <section id="results" class="results" aria-live="polite"></section>
     </main>
@@ -113,6 +153,11 @@
 
     <template id="card-template">
       <button class="result-card" type="button">
+        <span class="selection-indicator" aria-hidden="true">
+          <svg class="selection-indicator-icon" viewBox="0 0 24 24">
+            <path d="M5 12l5 5l9 -9" />
+          </svg>
+        </span>
         <img class="result-thumb" loading="lazy" alt="" />
       </button>
     </template>

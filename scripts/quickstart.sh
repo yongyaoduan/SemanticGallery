@@ -73,11 +73,21 @@ import json
 from pathlib import Path
 
 gallery_dir = Path("${resolved_gallery_dir}").resolve().as_posix()
-stage1_weights = Path("${resolved_stage1_weights_file_path}").resolve().as_posix()
+stage1_weights_path = Path("${resolved_stage1_weights_file_path}").resolve()
 manifest = Path("${PRIVATE_MANIFEST_FILE_PATH}").resolve()
+
+digest = hashlib.sha256()
+with stage1_weights_path.open("rb") as handle:
+    while True:
+        chunk = handle.read(1024 * 1024)
+        if not chunk:
+            break
+        digest.update(chunk)
+
 payload = {
     "gallery_dir": gallery_dir,
-    "stage1_weights_file_path": stage1_weights,
+    "stage1_weights_file_path": stage1_weights_path.as_posix(),
+    "stage1_weights_sha256": digest.hexdigest(),
     "manifest_sha1": hashlib.sha1(manifest.read_bytes()).hexdigest(),
 }
 print(json.dumps(payload, sort_keys=True, ensure_ascii=False))

@@ -43,7 +43,7 @@ Success looks like this:
 
 If startup fails, `quickstart.sh` exits with a non-zero status and leaves the full log in `logs/runtime/`.
 
-Later runs reuse the existing gallery-specific adaptation and the existing gallery index. Deletes from the web UI update the local index immediately. Rebuild the gallery index with `FORCE=1` whenever gallery files change or whenever the adaptation step reruns with different local data or a different checkpoint:
+Later runs reuse the existing gallery-specific adaptation and the existing gallery index. Deletes from the web UI update the local index immediately. If Stage 2 reruns with different local data or a different checkpoint, `quickstart.sh` now rebuilds the gallery index automatically. Use `FORCE=1` when gallery files change or when you want to rebuild the index manually:
 
 ```bash
 FORCE=1 GALLERY_DIR=/absolute/path/to/gallery ./scripts/quickstart.sh

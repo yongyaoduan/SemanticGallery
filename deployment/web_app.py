@@ -8,12 +8,14 @@ import mimetypes
 import os
 import shutil
 import sys
+import time
 from pathlib import Path
 from threading import RLock
 from urllib.parse import quote
 from uuid import uuid4
 
-from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
+from fastapi import Body, FastAPI, File, HTTPException, Query, Request, UploadFile
+from pydantic import BaseModel
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -44,6 +46,10 @@ def parse_args():
     parser.add_argument("--port", type=int, default=36168)
     parser.add_argument("--host", default="0.0.0.0")
     return parser.parse_args()
+
+
+class BatchDeletePayload(BaseModel):
+    paths: list[str]
 
 
 class LocalGalleryServer:
@@ -113,14 +119,74 @@ class LocalGalleryServer:
         @app.delete("/api/images/{image_path:path}")
         async def delete_image(image_path: str):
             file_path = self._resolve_gallery_file(image_path)
+            started_at = time.perf_counter()
             with self.engine_lock:
                 removed_from_index = self._delete_gallery_file(file_path)
+            duration_ms = (time.perf_counter() - started_at) * 1000
+            print(
+                f"delete_complete file={file_path.as_posix()} removed_from_index={removed_from_index} duration_ms={duration_ms:.1f}",
+                flush=True,
+            )
             return {
                 "deleted": True,
                 "removedFromIndex": removed_from_index,
                 "fileName": file_path.name,
                 "path": file_path.as_posix(),
             }
+
+        @app.post("/api/images/batch-delete")
+        async def delete_images(payload: BatchDeletePayload = Body(...)):
+            deleted = []
+            missing = []
+            started_at = time.perf_counter()
+            with self.engine_lock:
+                staged_entries = []
+                try:
+                    seen_paths = set()
+                    for image_path in payload.paths:
+                        if image_path in seen_paths:
+                            continue
+                        seen_paths.add(image_path)
+                        try:
+                            file_path = self._resolve_gallery_file(image_path)
+                        except HTTPException:
+                            missing.append(image_path)
+                            continue
+                        thumbnail_path = self._thumbnail_cache_path(file_path)
+                        staged_path = self._staging_path(file_path)
+                        staged_path.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.move(file_path.as_posix(), staged_path.as_posix())
+                        staged_entries.append((file_path, staged_path, thumbnail_path))
+
+                    if staged_entries:
+                        removed_index_paths = self.search_engine.delete_images(
+                            [file_path for file_path, _staged_path, _thumbnail_path in staged_entries]
+                        )
+                        for file_path, staged_path, thumbnail_path in staged_entries:
+                            self.metadata_cache.pop(file_path.as_posix(), None)
+                            if thumbnail_path.exists():
+                                thumbnail_path.unlink()
+                            staged_path.unlink(missing_ok=True)
+                            deleted.append(
+                                {
+                                    "fileName": file_path.name,
+                                    "path": file_path.as_posix(),
+                                    "removedFromIndex": file_path.as_posix() in removed_index_paths,
+                                }
+                            )
+                except Exception:
+                    if staged_entries:
+                        for file_path, staged_path, _thumbnail_path in reversed(staged_entries):
+                            if staged_path.exists():
+                                shutil.move(staged_path.as_posix(), file_path.as_posix())
+                    raise
+
+            duration_ms = (time.perf_counter() - started_at) * 1000
+            print(
+                f"batch_delete_complete requested={len(payload.paths)} deleted={len(deleted)} missing={len(missing)} duration_ms={duration_ms:.1f}",
+                flush=True,
+            )
+            return {"deleted": deleted, "missing": missing}
 
         @app.get("/thumbs/{image_path:path}")
         async def thumbnail(image_path: str):
@@ -138,6 +204,7 @@ class LocalGalleryServer:
                 {
                     "name": Path(image_path).stem,
                     "fileName": Path(image_path).name,
+                    "relativePath": relative_path,
                     "thumbnailUrl": f"/thumbs/{relative_path}",
                     "fullUrl": f"/images/{relative_path}",
                     "metadataUrl": f"/api/metadata/{relative_path}",

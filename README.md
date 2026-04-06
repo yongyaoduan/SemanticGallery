@@ -7,7 +7,7 @@ SemanticGallery is a local-first semantic image search app for Apple Silicon. Po
 - Private images stay on disk. The gallery itself is not uploaded.
 - Semantic search works across photos and screenshots.
 - First run prepares the runtime, adapts to the target gallery, and builds the local index automatically.
-- The web UI supports preview, metadata inspection, and permanent delete.
+- The web UI supports text search, image search, similar-image search, preview, metadata inspection, batch selection, and permanent delete.
 - The runtime is built on MLX for Apple Silicon.
 
 ## Requirements

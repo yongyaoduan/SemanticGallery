@@ -249,7 +249,7 @@ class LocalGalleryServer:
         if cached is not None:
             return cached
 
-        timestamp_label = "文件时间"
+        timestamp_label = "File time"
         timestamp_value = datetime.fromtimestamp(file_path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
 
         with Image.open(file_path) as image:
@@ -259,7 +259,7 @@ class LocalGalleryServer:
                     continue
                 formatted = self._format_timestamp(exif.get(exif_tag))
                 if formatted:
-                    timestamp_label = "拍摄时间"
+                    timestamp_label = "Capture time"
                     timestamp_value = formatted
                     break
 

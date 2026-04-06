@@ -12,6 +12,8 @@ PREPARE_PUBLIC_DATA="${PREPARE_PUBLIC_DATA:-0}"
 MIN_FLICKR_IMAGES="${MIN_FLICKR_IMAGES:-30000}"
 MIN_SCREEN2WORDS_TRAIN_ROWS="${MIN_SCREEN2WORDS_TRAIN_ROWS:-15000}"
 MIN_SCREEN2WORDS_VAL_ROWS="${MIN_SCREEN2WORDS_VAL_ROWS:-2000}"
+PRIVATE_ADAPT_TARGET_SIZE=100
+PRIVATE_ADAPT_MISSING_RETRAIN_THRESHOLD=0.10
 
 count_flickr_images() {
   "$PYTHON_BIN_PATH" - "$1" <<'PY'
@@ -65,6 +67,94 @@ needs_manifest_refresh() {
   [[ "$row_count" -lt "$min_rows" ]]
 }
 
+inspect_private_adapt_set() {
+  "$PYTHON_BIN_PATH" - <<PY
+import json
+from pathlib import Path
+
+adapt_path = Path("${PRIVATE_DATA_DIR}/private_adapt_data.jsonl").expanduser().resolve()
+gallery_root = Path("${PRIVATE_GALLERY_DIR}").expanduser().resolve()
+threshold = float("${PRIVATE_ADAPT_MISSING_RETRAIN_THRESHOLD}")
+
+if not adapt_path.exists():
+    print(json.dumps({
+        "action": "resample",
+        "reason": "adaptation set missing",
+        "tracked_rows": 0,
+        "missing_rows": 0,
+        "missing_ratio": 0.0,
+        "threshold": threshold,
+    }))
+    raise SystemExit(0)
+
+try:
+    rows = [json.loads(line) for line in adapt_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+except Exception as exc:
+    print(json.dumps({
+        "action": "resample",
+        "reason": f"adaptation set unreadable: {exc}",
+        "tracked_rows": 0,
+        "missing_rows": 0,
+        "missing_ratio": 0.0,
+        "threshold": threshold,
+    }, ensure_ascii=False))
+    raise SystemExit(0)
+
+tracked_rows = len(rows)
+if tracked_rows == 0:
+    print(json.dumps({
+        "action": "resample",
+        "reason": "adaptation set empty",
+        "tracked_rows": 0,
+        "missing_rows": 0,
+        "missing_ratio": 0.0,
+        "threshold": threshold,
+    }))
+    raise SystemExit(0)
+
+missing_rows = 0
+for row in rows:
+    image_path = Path(row["image_path"]).expanduser().resolve()
+    try:
+        image_path.relative_to(gallery_root)
+    except ValueError:
+        missing_rows += 1
+        continue
+    if not image_path.is_file():
+        missing_rows += 1
+
+missing_ratio = missing_rows / tracked_rows
+action = "resample" if missing_ratio >= threshold else "reuse"
+reason = "missing ratio reached retrain threshold" if action == "resample" else "missing ratio below retrain threshold"
+print(json.dumps({
+    "action": action,
+    "reason": reason,
+    "tracked_rows": tracked_rows,
+    "missing_rows": missing_rows,
+    "missing_ratio": round(missing_ratio, 6),
+    "threshold": threshold,
+}))
+PY
+}
+
+json_field() {
+  local payload="$1"
+  local field="$2"
+  JSON_PAYLOAD="$payload" "$PYTHON_BIN_PATH" - "$field" <<'PY'
+import json
+import os
+import sys
+
+field = sys.argv[1]
+payload = json.loads(os.environ["JSON_PAYLOAD"])
+value = payload.get(field, "")
+if isinstance(value, float):
+    print(f"{value:.6f}")
+else:
+    print(value)
+PY
+}
+
 if [[ "$PREPARE_PUBLIC_DATA" == "1" ]]; then
   log_step "Preparing public training data"
   if [[ "${FORCE:-0}" == "1" ]] || needs_flickr_refresh; then
@@ -111,15 +201,38 @@ if [[ -n "$PRIVATE_GALLERY_DIR" ]]; then
   )
   "${gallery_cmd[@]}"
 
-  log_step "Sampling capped private adaptation set"
-  log_kv "target_size=100"
-  adapt_cmd=(
-    "$PYTHON_BIN_PATH" "$ROOT_DIR/tools/prepare_private_adapt_manifest.py"
-    --source-manifest "$PRIVATE_DATA_DIR/full_manifest.jsonl"
-    --target-size 100
-    --output-path "$PRIVATE_DATA_DIR/private_adapt_data.jsonl"
-  )
-  "${adapt_cmd[@]}"
+  adapt_status_json="$(inspect_private_adapt_set)"
+  adapt_action="$(json_field "$adapt_status_json" action)"
+  tracked_rows="$(json_field "$adapt_status_json" tracked_rows)"
+  missing_rows="$(json_field "$adapt_status_json" missing_rows)"
+  missing_ratio="$(json_field "$adapt_status_json" missing_ratio)"
+  threshold="$(json_field "$adapt_status_json" threshold)"
+  reason="$(json_field "$adapt_status_json" reason)"
+
+  if [[ "$adapt_action" == "reuse" ]]; then
+    log_step "Reusing existing private adaptation set"
+    log_kv "tracked_rows=$tracked_rows"
+    log_kv "missing_rows=$missing_rows"
+    log_kv "missing_ratio=$missing_ratio"
+    log_kv "retrain_threshold=$threshold"
+  else
+    log_step "Sampling capped private adaptation set"
+    log_kv "target_size=$PRIVATE_ADAPT_TARGET_SIZE"
+    log_kv "reason=$reason"
+    if [[ "$tracked_rows" != "0" ]]; then
+      log_kv "tracked_rows=$tracked_rows"
+      log_kv "missing_rows=$missing_rows"
+      log_kv "missing_ratio=$missing_ratio"
+      log_kv "retrain_threshold=$threshold"
+    fi
+    adapt_cmd=(
+      "$PYTHON_BIN_PATH" "$ROOT_DIR/tools/prepare_private_adapt_manifest.py"
+      --source-manifest "$PRIVATE_DATA_DIR/full_manifest.jsonl"
+      --target-size "$PRIVATE_ADAPT_TARGET_SIZE"
+      --output-path "$PRIVATE_DATA_DIR/private_adapt_data.jsonl"
+    )
+    "${adapt_cmd[@]}"
+  fi
 elif [[ ! -f "$PRIVATE_DATA_DIR/full_manifest.jsonl" || ! -f "$PRIVATE_DATA_DIR/private_adapt_data.jsonl" ]]; then
   die "set PRIVATE_GALLERY_DIR to build the capped private adaptation set."
 fi

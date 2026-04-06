@@ -10,6 +10,18 @@ FINAL_WEIGHTS_FILE_PATH="$FINAL_RUN_DIR/weights.safetensors"
 QUICKSTART_STATE_FILE_PATH="$FINAL_RUN_DIR/quickstart_state.json"
 PRIVATE_MANIFEST_FILE_PATH="$ROOT_DIR/datasets/private_gallery_local/private_adapt_data.jsonl"
 STAGE1_WEIGHTS_FILE_PATH="${STAGE1_WEIGHTS_FILE_PATH:-$LOCAL_STAGE1_WEIGHTS_FILE_PATH}"
+MAX_EPOCHS_STAGE2="${MAX_EPOCHS_STAGE2:-1}"
+TRAIN_BATCH_SIZE="${TRAIN_BATCH_SIZE:-4}"
+TRAIN_PRECISION="${TRAIN_PRECISION:-bfloat16}"
+TEXT_UNFREEZE_LAST_N="${TEXT_UNFREEZE_LAST_N:-2}"
+VISION_UNFREEZE_LAST_N="${VISION_UNFREEZE_LAST_N:-2}"
+LR_STAGE2="${LR_STAGE2:-5e-6}"
+PRIVATE_BATCH_SIZE="${PRIVATE_BATCH_SIZE:-8}"
+PRIVATE_REPEATS_PER_EPOCH="${PRIVATE_REPEATS_PER_EPOCH:-2}"
+PRIVATE_INSTANCE_WEIGHT="${PRIVATE_INSTANCE_WEIGHT:-0.3}"
+PRIVATE_DISTILL_WEIGHT="${PRIVATE_DISTILL_WEIGHT:-0.15}"
+MAX_TRAIN_STEPS="${MAX_TRAIN_STEPS:-}"
+MAX_VAL_STEPS="${MAX_VAL_STEPS:-}"
 HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-36168}"
 CONFIG_FILE_PATH="${CONFIG_FILE_PATH:-$ROOT_DIR/deployment/search_config_gallery_mlx.json}"
@@ -89,6 +101,20 @@ payload = {
     "stage1_weights_file_path": stage1_weights_path.as_posix(),
     "stage1_weights_sha256": digest.hexdigest(),
     "manifest_sha1": hashlib.sha1(manifest.read_bytes()).hexdigest(),
+    "stage2_config": {
+        "epochs": "${MAX_EPOCHS_STAGE2}",
+        "train_batch_size": "${TRAIN_BATCH_SIZE}",
+        "train_precision": "${TRAIN_PRECISION}",
+        "text_unfreeze_last_n": "${TEXT_UNFREEZE_LAST_N}",
+        "vision_unfreeze_last_n": "${VISION_UNFREEZE_LAST_N}",
+        "lr": "${LR_STAGE2}",
+        "private_batch_size": "${PRIVATE_BATCH_SIZE}",
+        "private_repeats_per_epoch": "${PRIVATE_REPEATS_PER_EPOCH}",
+        "private_instance_weight": "${PRIVATE_INSTANCE_WEIGHT}",
+        "private_distill_weight": "${PRIVATE_DISTILL_WEIGHT}",
+        "max_train_steps": "${MAX_TRAIN_STEPS}",
+        "max_val_steps": "${MAX_VAL_STEPS}",
+    },
 }
 print(json.dumps(payload, sort_keys=True, ensure_ascii=False))
 PY

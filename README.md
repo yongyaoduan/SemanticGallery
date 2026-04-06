@@ -43,7 +43,13 @@ Success looks like this:
 
 If startup fails, `quickstart.sh` exits with a non-zero status and leaves the full log in `logs/runtime/`.
 
-Later runs reuse the existing gallery-specific adaptation and the existing gallery index. Deletes from the web UI update the local index immediately. If Stage 2 reruns with different local data or a different checkpoint, `quickstart.sh` now rebuilds the gallery index automatically. Use `FORCE=1` when gallery files change or when you want to rebuild the index manually:
+Later runs rebuild the full local manifest, then apply three reuse checks:
+
+- The capped local adaptation set stays fixed unless at least `10%` of its tracked files are missing.
+- Stage 2 reruns only when the published Stage 1 checkpoint, the capped local adaptation set, or the Stage 2 hyperparameters change.
+- The gallery index reruns only when the gallery contents or the final weights change.
+
+Deletes from the web UI update the local index immediately. Use `FORCE=1` only when you want to force a manual gallery re-encode:
 
 ```bash
 FORCE=1 GALLERY_DIR=/absolute/path/to/gallery ./scripts/quickstart.sh

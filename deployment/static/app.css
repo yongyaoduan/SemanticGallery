@@ -210,9 +210,11 @@ body.is-locked {
 }
 
 .selection-count {
-    color: var(--text);
-    font-size: 0.95rem;
-    font-weight: 500;
+    color: var(--muted);
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: lowercase;
 }
 
 .selection-actions {

@@ -23,7 +23,7 @@ This page lists the user-facing environment variables exposed by the shell entry
 | `LOG_FILE_PATH` | Default: `logs/runtime/semanticgallery_<port>.log`. Set a file path to override the startup log location. |
 | `PID_FILE_PATH` | Default: `logs/runtime/semanticgallery_<port>.pid`. Set a file path to override the PID file location. |
 | `STARTUP_TIMEOUT_SECONDS` | Default: `300`. This is an idle timeout, not a total startup limit. SemanticGallery keeps waiting as long as new startup log lines keep arriving. It fails only when no new startup log output appears for this many seconds. Set a larger integer if your machine can pause for long stretches during startup. |
-| `FORCE` | Default: `0`. `0`: reuse the existing gallery bank when local index files already exist. `1`: ignore the existing gallery bank, re-encode the gallery, and rewrite the search config. |
+| `FORCE` | Default: `0`. `0`: rebuild the gallery bank only when the gallery contents or final weights changed. `1`: ignore the cached state, re-encode the gallery, and rewrite the search config even when nothing changed. |
 | `ENCODE_BATCH_SIZE` | Default: `8`. Set a larger positive integer to improve throughput at the cost of higher memory use. Set a smaller value to reduce memory use. |
 
 ## Direct Deployment
@@ -39,14 +39,14 @@ These variables apply when `deploy_best.sh` is run directly.
 | `PORT` | Default: `36168`. Set any unused TCP port to change the web URL and the runtime log and PID filenames. |
 | `MODEL_PRECISION` | Default: `bfloat16`. `bfloat16`: normal fast path for gallery encoding and query encoding. `float32`: slower and uses more memory, but is the conservative full-precision option. |
 | `MODEL_WEIGHTS_FILE_PATH` | Default: `logs/semanticgallery_private_data_adapted/weights.safetensors`. Deployment model file path. SemanticGallery checks this path first. If a local file exists there, it uses that file. Otherwise it falls back to the published Stage 1 checkpoint and uses that. |
-| `FORCE` | Default: `0`. `0`: reuse the existing gallery bank when local index files already exist. `1`: ignore the existing gallery bank and rerun gallery encoding. |
+| `FORCE` | Default: `0`. `0`: rebuild the gallery bank only when the gallery contents or final weights changed. `1`: ignore the cached state and rerun gallery encoding. |
 | `ENCODE_BATCH_SIZE` | Default: `8`. Set a larger positive integer to improve throughput at the cost of higher memory use. Set a smaller value to reduce memory use. |
 
 ## Data Preparation
 
 | Variable | Details |
 | --- | --- |
-| `PRIVATE_GALLERY_DIR` | Required unless the local JSONL files already exist. Set an absolute path to the user's gallery to build `full_manifest.jsonl` and `private_adapt_data.jsonl`. |
+| `PRIVATE_GALLERY_DIR` | Required unless the local JSONL files already exist. Set an absolute path to the user's gallery to build `full_manifest.jsonl` and `private_adapt_data.jsonl`. `prepare_data.sh` always refreshes `full_manifest.jsonl`. It reuses `private_adapt_data.jsonl` until at least `10%` of its tracked files are missing from the current gallery. |
 | `PREPARE_PUBLIC_DATA` | Default: `0`. `0`: build only the local gallery files used by Stage 2 adaptation. `1`: also download and prepare Flickr30k plus Screen2Words for full Stage 1 retraining. |
 | `FORCE` | Default: `0`. `0`: reuse local public Stage 1 datasets when they already meet the row threshold. `1`: refresh those public datasets even if the local copies already exist. |
 

@@ -18,6 +18,12 @@ This command scans the user gallery and writes:
 
 `full_manifest.jsonl` contains one row per usable image in the target gallery. `private_adapt_data.jsonl` is the capped subset used by the default Stage 2 adaptation path. The cap is `100` rows. If the gallery has fewer usable images, it keeps the available rows.
 
+`private_adapt_data.jsonl` is treated as a fixed local snapshot. On later runs, `prepare_data.sh` checks whether those tracked files still exist in the current gallery:
+
+- if fewer than `10%` are missing, it reuses the existing file unchanged
+- if `10%` or more are missing, it resamples the capped set from the current gallery
+- it does not silently fill missing rows with new images below that threshold
+
 ### Schema
 
 Each JSONL row uses the same schema:

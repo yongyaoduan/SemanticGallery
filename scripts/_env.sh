@@ -233,6 +233,28 @@ payload = {
     "weights_file_path": weights_file_path.as_posix() if weights_file_path else "",
     "weights_file_sha256": sha256_file(weights_file_path) if weights_file_path else None,
 }
+
+gallery_root = Path(gallery_dir)
+gallery_state = hashlib.sha256()
+gallery_file_count = 0
+gallery_total_bytes = 0
+supported_suffixes = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".heic", ".heif"}
+
+for image_path in sorted(path for path in gallery_root.rglob("*") if path.is_file() and path.suffix.lower() in supported_suffixes):
+    stat = image_path.stat()
+    relative_path = image_path.relative_to(gallery_root).as_posix()
+    gallery_state.update(relative_path.encode("utf-8"))
+    gallery_state.update(b"\0")
+    gallery_state.update(str(stat.st_size).encode("utf-8"))
+    gallery_state.update(b"\0")
+    gallery_state.update(str(stat.st_mtime_ns).encode("utf-8"))
+    gallery_state.update(b"\n")
+    gallery_file_count += 1
+    gallery_total_bytes += stat.st_size
+
+payload["gallery_file_count"] = gallery_file_count
+payload["gallery_total_bytes"] = gallery_total_bytes
+payload["gallery_state_sha256"] = gallery_state.hexdigest()
 print(json.dumps(payload, sort_keys=True, ensure_ascii=False))
 PY
 }

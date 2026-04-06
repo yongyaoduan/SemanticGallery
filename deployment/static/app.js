@@ -134,12 +134,12 @@ const updateSelectionBar = () => {
     const allSelected = selectableCount > 0 && selectedCount === selectableCount;
     selectionBar.hidden = !selectionMode;
     selectionToggle.classList.toggle("is-active", selectionMode);
-    selectionCount.textContent = `已选 ${selectedCount} 张`;
+    selectionCount.textContent = `${selectedCount} selected`;
     selectionDelete.disabled = selectedCount === 0;
     selectionSelectAll.disabled = selectableCount === 0;
     selectionSelectAll.classList.toggle("is-active", allSelected);
-    selectionSelectAll.setAttribute("aria-label", allSelected ? "取消全选当前结果" : "全选当前结果");
-    selectionSelectAll.title = allSelected ? "取消全选当前结果" : "全选当前结果";
+    selectionSelectAll.setAttribute("aria-label", allSelected ? "Clear selected results" : "Select all results");
+    selectionSelectAll.title = allSelected ? "Clear selected results" : "Select all results";
 };
 
 const exitSelectionMode = () => {
@@ -188,7 +188,7 @@ const closeLightbox = () => {
     lightboxInfoToggle.setAttribute("aria-expanded", "false");
     lightboxFilename.textContent = "";
     lightboxPath.textContent = "";
-    lightboxTimeLabel.textContent = "时间";
+    lightboxTimeLabel.textContent = "Time";
     lightboxTime.textContent = "";
     activeDeleteUrl = "";
     activeFileName = "";
@@ -221,8 +221,8 @@ const openLightbox = async ({ fullUrl, altText, fileName, metadataUrl, deleteUrl
     lightboxInfoToggle.setAttribute("aria-expanded", "false");
     lightboxFilename.textContent = fileName || "";
     lightboxPath.textContent = "";
-    lightboxTimeLabel.textContent = "时间";
-    lightboxTime.textContent = "读取中";
+    lightboxTimeLabel.textContent = "Time";
+    lightboxTime.textContent = "Loading";
     activeDeleteUrl = deleteUrl || "";
     activeFileName = fileName || "";
     activeSimilarUrl = similarUrl || "";
@@ -235,13 +235,13 @@ const openLightbox = async ({ fullUrl, altText, fileName, metadataUrl, deleteUrl
         const metadata = await loadMetadata(metadataUrl);
         lightboxFilename.textContent = metadata.fileName || fileName || "";
         lightboxPath.textContent = metadata.path || "";
-        lightboxTimeLabel.textContent = metadata.timeLabel || "时间";
-        lightboxTime.textContent = metadata.timeValue || "未知";
+        lightboxTimeLabel.textContent = metadata.timeLabel || "Time";
+        lightboxTime.textContent = metadata.timeValue || "Unknown";
     } catch (error) {
         if (error.name !== "AbortError") {
-            lightboxPath.textContent = "未知";
-            lightboxTimeLabel.textContent = "时间";
-            lightboxTime.textContent = "未知";
+            lightboxPath.textContent = "Unknown";
+            lightboxTimeLabel.textContent = "Time";
+            lightboxTime.textContent = "Unknown";
         }
     }
 };
@@ -283,8 +283,10 @@ const deleteActiveImage = async () => {
     if (!activeDeleteUrl || lightboxDelete.disabled) {
         return;
     }
-    const fileName = activeFileName || lightboxFilename.textContent || "这张图片";
-    const confirmed = window.confirm(`永久删除 ${fileName}？删除后会同时从本地相册和当前索引中移除，且无法恢复。`);
+    const fileName = activeFileName || lightboxFilename.textContent || "this image";
+    const confirmed = window.confirm(
+        `Delete ${fileName} permanently?\n\nThis removes it from your local gallery and the current index. This action cannot be undone.`,
+    );
     if (!confirmed) {
         return;
     }
@@ -299,7 +301,7 @@ const deleteActiveImage = async () => {
         await runCurrentSearch();
     } catch (error) {
         lightboxDelete.disabled = false;
-        window.alert("删除失败，请重试。");
+        window.alert("Delete failed. Please try again.");
     }
 };
 
@@ -307,7 +309,9 @@ const deleteSelectedImages = async () => {
     if (selectedPaths.size === 0 || selectionDelete.disabled) {
         return;
     }
-    const confirmed = window.confirm(`永久删除已选中的 ${selectedPaths.size} 张图片？删除后会同时从本地相册和当前索引中移除，且无法恢复。`);
+    const confirmed = window.confirm(
+        `Delete ${selectedPaths.size} selected images permanently?\n\nThis removes them from your local gallery and the current index. This action cannot be undone.`,
+    );
     if (!confirmed) {
         return;
     }
@@ -327,7 +331,7 @@ const deleteSelectedImages = async () => {
         await runCurrentSearch();
     } catch (error) {
         selectionDelete.disabled = false;
-        window.alert("批量删除失败，请重试。");
+        window.alert("Batch delete failed. Please try again.");
     }
 };
 

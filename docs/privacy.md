@@ -29,10 +29,11 @@
 
 - Deletes from the web UI update the local index immediately.
 - If the Stage 2 adaptation weights change, `quickstart.sh` rebuilds the gallery index automatically before it starts the web app.
-- New or changed gallery files are not picked up automatically when an existing gallery bank is reused.
-- Rerun `quickstart.sh` with `FORCE=1` to rebuild the gallery index after gallery files change, or when you want to force a manual rebuild.
+- If gallery files are added, removed, renamed, or modified between runs, `quickstart.sh` rebuilds the gallery index automatically on the next startup.
+- Rerun `quickstart.sh` with `FORCE=1` only when you want to force a manual rebuild even though the current gallery and model state still match the cached index.
 
 ## Stage 2 Limit
 
 - The default gallery-specific adaptation path keeps at most `100` local images.
 - This cap keeps the local adaptation step short and limits overfitting to a small personal gallery.
+- That capped set stays fixed until at least `10%` of its tracked files are missing from the current gallery.

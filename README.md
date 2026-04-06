@@ -47,7 +47,7 @@ Later runs rebuild the full local manifest, then apply three reuse checks:
 
 - The capped local adaptation set stays fixed unless at least `10%` of its tracked files are missing.
 - Stage 2 reruns only when the published Stage 1 checkpoint, the capped local adaptation set, or the Stage 2 hyperparameters change.
-- The gallery index reruns only when the gallery contents or the final weights change.
+- The gallery index synchronizes only when the gallery contents or the final weights change. Unchanged images are reused, new or changed images are encoded, and deleted images are removed from the local index.
 
 Deletes from the web UI update the local index immediately. Use `FORCE=1` only when you want to force a manual gallery re-encode:
 

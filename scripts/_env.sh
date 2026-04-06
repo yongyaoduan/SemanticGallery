@@ -269,10 +269,12 @@ prepare_mlx_search_config() {
   local embeddings_file_path
   local indexed_paths_file_path
   local skipped_images_file_path
+  local file_state_file_path
   local bank_state_file_path
   local legacy_embeddings_file_path
   local legacy_indexed_paths_file_path
   local legacy_skipped_images_file_path
+  local legacy_file_state_file_path
   local legacy_bank_state_file_path
   local encode_cmd
   local create_cmd
@@ -288,16 +290,19 @@ prepare_mlx_search_config() {
   embeddings_file_path="$ROOT_DIR/deployment/${gallery_name}_mlx_siglip2_embeddings.npy"
   indexed_paths_file_path="$ROOT_DIR/deployment/${gallery_name}_mlx_siglip2.paths.txt"
   skipped_images_file_path="$ROOT_DIR/deployment/${gallery_name}_mlx_siglip2_skipped.json"
+  file_state_file_path="$ROOT_DIR/deployment/${gallery_name}_mlx_siglip2_file_state.json"
   bank_state_file_path="$ROOT_DIR/deployment/${gallery_name}_mlx_siglip2_bank_state.json"
   legacy_embeddings_file_path="$ROOT_DIR/deployment/${gallery_name}_siglip2_embeddings.npy"
   legacy_indexed_paths_file_path="$ROOT_DIR/deployment/${gallery_name}_siglip2.paths.txt"
   legacy_skipped_images_file_path="$ROOT_DIR/deployment/${gallery_name}_siglip2_skipped.json"
+  legacy_file_state_file_path="$ROOT_DIR/deployment/${gallery_name}_siglip2_file_state.json"
   legacy_bank_state_file_path="$ROOT_DIR/deployment/${gallery_name}_siglip2_bank_state.json"
 
   if [[ "${FORCE:-0}" != "1" && -z "$weights_file_path" && -f "$legacy_embeddings_file_path" && -f "$legacy_indexed_paths_file_path" && -f "$legacy_skipped_images_file_path" ]]; then
     embeddings_file_path="$legacy_embeddings_file_path"
     indexed_paths_file_path="$legacy_indexed_paths_file_path"
     skipped_images_file_path="$legacy_skipped_images_file_path"
+    file_state_file_path="$legacy_file_state_file_path"
     bank_state_file_path="$legacy_bank_state_file_path"
   fi
 
@@ -342,6 +347,7 @@ prepare_mlx_search_config() {
       --embeddings-output "$embeddings_file_path"
       --paths-output "$indexed_paths_file_path"
       --skipped-output "$skipped_images_file_path"
+      --file-state-output "$file_state_file_path"
     )
     if [[ -n "$weights_file_path" && -f "$weights_file_path" ]]; then
       encode_cmd+=(--weights-file "$weights_file_path")
@@ -364,6 +370,7 @@ prepare_mlx_search_config() {
     --embeddings-file "$embeddings_file_path"
     --indexed-paths-file "$indexed_paths_file_path"
     --skipped-file "$skipped_images_file_path"
+    --file-state-file "$file_state_file_path"
     --config-output "$config_file_path"
   )
   if [[ -n "$weights_file_path" && -f "$weights_file_path" ]]; then

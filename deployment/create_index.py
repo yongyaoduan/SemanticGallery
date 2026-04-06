@@ -15,6 +15,7 @@ def parse_args():
     parser.add_argument("--embeddings-file", default=None)
     parser.add_argument("--indexed-paths-file", default=None)
     parser.add_argument("--skipped-file", default=None)
+    parser.add_argument("--file-state-file", default=None)
     parser.add_argument("--metadata-manifest", default=None)
     parser.add_argument("--config-output", default="./deployment/search_config.json")
     return parser.parse_args()
@@ -60,6 +61,8 @@ def main():
     }
     if args.metadata_manifest:
         payload["metadata_manifest"] = Path(args.metadata_manifest).expanduser().resolve().as_posix()
+    if args.file_state_file:
+        payload["file_state_file"] = Path(args.file_state_file).expanduser().resolve().as_posix()
 
     config_output = Path(args.config_output).expanduser().resolve()
     config_output.parent.mkdir(parents=True, exist_ok=True)

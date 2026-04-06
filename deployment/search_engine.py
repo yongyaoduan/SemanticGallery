@@ -160,6 +160,41 @@ class BaseSearchEngine:
         if changed:
             self._atomic_write_json(skipped_path, kept_rows)
 
+    def _remove_from_file_state_many(self, image_paths: set[Path]) -> None:
+        file_state_value = self.config.get("file_state_file")
+        if not file_state_value:
+            return
+
+        file_state_path = Path(file_state_value).expanduser().resolve()
+        if not file_state_path.exists():
+            return
+
+        try:
+            payload = json.loads(file_state_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return
+        if not isinstance(payload, list):
+            return
+
+        kept_rows = []
+        changed = False
+        for row in payload:
+            if not isinstance(row, dict):
+                kept_rows.append(row)
+                continue
+            relative_path = row.get("relative_path")
+            if not relative_path:
+                kept_rows.append(row)
+                continue
+            resolved = (self.gallery_path / relative_path).resolve()
+            if resolved in image_paths:
+                changed = True
+                continue
+            kept_rows.append(row)
+
+        if changed:
+            self._atomic_write_json(file_state_path, kept_rows)
+
     def delete_image(self, image_path: str | Path) -> bool:
         removed = self.delete_images([image_path])
         return Path(image_path).expanduser().resolve().as_posix() in removed
@@ -212,6 +247,7 @@ class BaseSearchEngine:
 
         self._remove_from_metadata_manifest_many(target_set)
         self._remove_from_skipped_images_many(target_set)
+        self._remove_from_file_state_many(target_set)
         return removed_index_paths
 
 

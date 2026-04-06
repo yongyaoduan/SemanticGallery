@@ -29,7 +29,7 @@
 
 - Deletes from the web UI update the local index immediately.
 - If the Stage 2 adaptation weights change, `quickstart.sh` rebuilds the gallery index automatically before it starts the web app.
-- If gallery files are added, removed, renamed, or modified between runs, `quickstart.sh` rebuilds the gallery index automatically on the next startup.
+- If gallery files are added, removed, renamed, or modified between runs, `quickstart.sh` synchronizes the gallery index automatically on the next startup. Unchanged images are reused, new or changed images are encoded, and deleted images are removed from the local index.
 - Rerun `quickstart.sh` with `FORCE=1` only when you want to force a manual rebuild even though the current gallery and model state still match the cached index.
 
 ## Stage 2 Limit

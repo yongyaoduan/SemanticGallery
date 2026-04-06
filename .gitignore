@@ -17,6 +17,7 @@ deployment/*.paths.txt
 deployment/*_skipped.json
 deployment/*.skipped.json
 deployment/*_bank_state.json
+deployment/*_file_state.json
 deployment/search_config*.json
 deployment/.thumb_cache/
 deployment/.delete_staging/

@@ -13,9 +13,9 @@ PRIVATE_GALLERY_DIR=/absolute/path/to/gallery ./scripts/prepare_data.sh
 
 This command scans the user gallery and writes:
 
-- `datasets/private_gallery_local/full_manifest.jsonl`
-- `datasets/private_gallery_local/private_adapt_data.jsonl`
-- `datasets/private_gallery_local/private_adapt_data_state.json`
+- `datasets/private_gallery_local/<gallery-key>/full_manifest.jsonl`
+- `datasets/private_gallery_local/<gallery-key>/private_adapt_data.jsonl`
+- `datasets/private_gallery_local/<gallery-key>/private_adapt_data_state.json`
 
 `full_manifest.jsonl` contains one row per usable image in the target gallery. `private_adapt_data.jsonl` is the capped subset used by the default Stage 2 adaptation path. The cap is `100` rows. If the gallery has fewer usable images, it keeps the available rows.
 
@@ -38,7 +38,7 @@ Each JSONL row uses the same schema:
 | `split` | Deterministic `train` or `val` assignment |
 | `source` | Source label written into the manifest |
 
-The default Stage 2 loss does not optimize on private captions. The private rows keep the shared JSONL schema so the same loaders can parse both public and local manifests, but the gallery-specific loss reads image paths and image augmentations, not private text labels. Those weak captions still matter at runtime because the search engine can use them for a small metadata-based ranking boost.
+The default Stage 2 loss does not optimize on private captions. The private rows keep the shared JSONL schema so the same loaders can parse both public and local manifests, but the gallery-specific loss reads image paths and image augmentations, not private text labels. Those weak captions still matter at runtime because the search engine uses them in a caption-based ranking heuristic.
 
 ### Caption Rules
 
@@ -73,13 +73,13 @@ The default Stage 2 path uses that small public reference set to keep a public t
 PREPARE_PUBLIC_DATA=1 PRIVATE_GALLERY_DIR=/absolute/path/to/gallery ./scripts/prepare_data.sh
 ```
 
-This path prepares the public training data for Stage 1 and the local files built from the user's gallery:
+This path prepares the public development corpus used by the in-repo Stage 1 run and the local files built from the user's gallery:
 
 - `datasets/flickr30k/`
 - `datasets/screen2words_train/`
 - `datasets/screen2words_val/`
-- `datasets/private_gallery_local/full_manifest.jsonl`
-- `datasets/private_gallery_local/private_adapt_data.jsonl`
-- `datasets/private_gallery_local/private_adapt_data_state.json`
+- `datasets/private_gallery_local/<gallery-key>/full_manifest.jsonl`
+- `datasets/private_gallery_local/<gallery-key>/private_adapt_data.jsonl`
+- `datasets/private_gallery_local/<gallery-key>/private_adapt_data_state.json`
 
-Use this path only when you want to reproduce or replace the published Stage 1 checkpoint.
+The Flickr30k portion is currently built from the published `lmms-lab/flickr30k` corpus, which only exposes a `test` split. The repo uses that downloaded corpus as a local development source and then makes a deterministic local `80/20` train/val split in code. Use this path only when you want to run a local Stage 1 experiment or replace the published checkpoint for your own workflow. It is not the source of the benchmark tables in `docs/benchmarks.md`.

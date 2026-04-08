@@ -3,6 +3,11 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import sys
+
+sys.path.append(Path(__file__).resolve().parents[1].as_posix())
+
+from deployment.gallery_keys import gallery_artifact_key
 
 
 def parse_args():
@@ -17,13 +22,13 @@ def parse_args():
     parser.add_argument("--skipped-file", default=None)
     parser.add_argument("--file-state-file", default=None)
     parser.add_argument("--metadata-manifest", default=None)
-    parser.add_argument("--config-output", default="./deployment/search_config.json")
+    parser.add_argument("--config-output", default=None)
     return parser.parse_args()
 
 
 def resolve_artifacts(gallery_path: Path, embeddings_file: str | None, indexed_paths_file: str | None, skipped_file: str | None):
     deployment_dir = Path(__file__).resolve().parent
-    stem = gallery_path.name
+    stem = gallery_artifact_key(gallery_path)
     embeddings_path = Path(embeddings_file).expanduser().resolve() if embeddings_file else deployment_dir / f"{stem}_mlx_siglip2_embeddings.npy"
     paths_path = Path(indexed_paths_file).expanduser().resolve() if indexed_paths_file else deployment_dir / f"{stem}_mlx_siglip2.paths.txt"
     skipped_path = Path(skipped_file).expanduser().resolve() if skipped_file else deployment_dir / f"{stem}_mlx_siglip2_skipped.json"
@@ -52,6 +57,7 @@ def main():
         "model_name": Path(args.model_path).expanduser().resolve().as_posix(),
         "weights_file": Path(args.weights_file).expanduser().resolve().as_posix() if args.weights_file else None,
         "model_precision": args.precision,
+        "gallery_key": gallery_artifact_key(gallery_path),
         "gallery_folder": gallery_path.name,
         "gallery_path": gallery_path.as_posix(),
         "indexed_paths_file": paths_path.as_posix(),
@@ -64,7 +70,8 @@ def main():
     if args.file_state_file:
         payload["file_state_file"] = Path(args.file_state_file).expanduser().resolve().as_posix()
 
-    config_output = Path(args.config_output).expanduser().resolve()
+    config_output_value = args.config_output or f"./deployment/search_configs/{payload['gallery_key']}.json"
+    config_output = Path(config_output_value).expanduser().resolve()
     config_output.parent.mkdir(parents=True, exist_ok=True)
     config_output.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"search_backend={payload['backend']}")

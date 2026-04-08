@@ -43,10 +43,10 @@ else:
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Launch the local image retrieval UI.")
-    parser.add_argument("--config", default="./deployment/search_config.json", help="Search config JSON path.")
+    parser.add_argument("--config", required=True, help="Search config JSON path.")
     parser.add_argument("--device", default="auto")
     parser.add_argument("--port", type=int, default=36168)
-    parser.add_argument("--host", default="0.0.0.0")
+    parser.add_argument("--host", default="127.0.0.1")
     return parser.parse_args()
 
 
@@ -58,11 +58,12 @@ class LocalGalleryServer:
     def __init__(self, search_engine: BaseSearchEngine):
         self.search_engine = search_engine
         self.gallery_path = Path(search_engine.gallery_path).expanduser().resolve()
+        self.gallery_key = str(search_engine.config.get("gallery_key") or self.gallery_path.name)
         self.templates = Jinja2Templates(directory=(Path(__file__).parent / "templates").as_posix())
         self.static_dir = Path(__file__).parent / "static"
         self.static_version = self._build_static_version()
-        self.thumbnail_dir = Path(__file__).parent / ".thumb_cache" / self.gallery_path.name
-        self.trash_dir = Path(__file__).parent / ".delete_staging" / self.gallery_path.name
+        self.thumbnail_dir = Path(__file__).parent / ".thumb_cache" / self.gallery_key
+        self.trash_dir = Path(__file__).parent / ".delete_staging" / self.gallery_key
         self.metadata_cache: dict[str, dict[str, str]] = {}
         self.engine_lock = RLock()
         self.thumbnail_dir.mkdir(parents=True, exist_ok=True)
@@ -145,7 +146,6 @@ class LocalGalleryServer:
             started_at = time.perf_counter()
             with self.engine_lock:
                 staged_entries = []
-                snapshot = self.search_engine.snapshot_index_state()
                 try:
                     seen_paths = set()
                     for image_path in payload.paths:
@@ -190,7 +190,6 @@ class LocalGalleryServer:
                         for file_path, staged_path, _thumbnail_path in reversed(staged_entries):
                             if staged_path.exists():
                                 shutil.move(staged_path.as_posix(), file_path.as_posix())
-                    self.search_engine.restore_index_state(snapshot)
                     raise
 
             duration_ms = (time.perf_counter() - started_at) * 1000
@@ -318,7 +317,6 @@ class LocalGalleryServer:
         staged_path = self._staging_path(file_path)
         staged_path.parent.mkdir(parents=True, exist_ok=True)
 
-        snapshot = self.search_engine.snapshot_index_state()
         shutil.move(file_path.as_posix(), staged_path.as_posix())
         try:
             removed_from_index = self.search_engine.delete_image(file_path)
@@ -336,7 +334,6 @@ class LocalGalleryServer:
         except Exception:
             if staged_path.exists():
                 shutil.move(staged_path.as_posix(), file_path.as_posix())
-            self.search_engine.restore_index_state(snapshot)
             raise
 
     def _ensure_thumbnail(self, file_path: Path) -> Path:

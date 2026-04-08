@@ -7,14 +7,22 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_env.sh"
 ensure_env
 
 PRIVATE_GALLERY_DIR="${PRIVATE_GALLERY_DIR:-${1:-}}"
-PRIVATE_DATA_DIR="${PRIVATE_DATA_DIR:-$ROOT_DIR/datasets/private_gallery_local}"
-PRIVATE_ADAPT_STATE_FILE_PATH="$PRIVATE_DATA_DIR/private_adapt_data_state.json"
+PRIVATE_DATA_DIR="${PRIVATE_DATA_DIR:-}"
 PREPARE_PUBLIC_DATA="${PREPARE_PUBLIC_DATA:-0}"
 MIN_FLICKR_IMAGES="${MIN_FLICKR_IMAGES:-30000}"
 MIN_SCREEN2WORDS_TRAIN_ROWS="${MIN_SCREEN2WORDS_TRAIN_ROWS:-15000}"
 MIN_SCREEN2WORDS_VAL_ROWS="${MIN_SCREEN2WORDS_VAL_ROWS:-2000}"
 PRIVATE_ADAPT_TARGET_SIZE=100
 PRIVATE_ADAPT_MISSING_RETRAIN_THRESHOLD=0.10
+
+if [[ -z "$PRIVATE_DATA_DIR" ]]; then
+  if [[ -n "$PRIVATE_GALLERY_DIR" ]]; then
+    PRIVATE_DATA_DIR="$ROOT_DIR/datasets/private_gallery_local/$(gallery_artifact_key "$PRIVATE_GALLERY_DIR")"
+  else
+    PRIVATE_DATA_DIR="$ROOT_DIR/datasets/private_gallery_local"
+  fi
+fi
+PRIVATE_ADAPT_STATE_FILE_PATH="$PRIVATE_DATA_DIR/private_adapt_data_state.json"
 
 count_flickr_images() {
   "$PYTHON_BIN_PATH" - "$1" <<'PY'
@@ -258,10 +266,10 @@ PY
 if [[ "$PREPARE_PUBLIC_DATA" == "1" ]]; then
   log_step "Preparing public training data"
   if [[ "${FORCE:-0}" == "1" ]] || needs_flickr_refresh; then
-      log_step "Refreshing Flickr30k"
-      "$PYTHON_BIN_PATH" "$ROOT_DIR/tools/prepare_flickr30k.py" --output-dir "$ROOT_DIR/datasets/flickr30k"
+      log_step "Refreshing Flickr30k development corpus"
+      "$PYTHON_BIN_PATH" "$ROOT_DIR/tools/prepare_flickr30k.py" --split test --output-dir "$ROOT_DIR/datasets/flickr30k"
   else
-      log_step "Reusing Flickr30k"
+      log_step "Reusing Flickr30k development corpus"
       log_kv "captions_file_path=$ROOT_DIR/datasets/flickr30k/captions.txt"
   fi
 

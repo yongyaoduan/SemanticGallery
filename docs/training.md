@@ -9,10 +9,10 @@ SemanticGallery has two training paths:
 
 ```bash
 PRIVATE_GALLERY_DIR=/absolute/path/to/gallery ./scripts/prepare_data.sh
-./scripts/adapt_best.sh
+PRIVATE_GALLERY_DIR=/absolute/path/to/gallery ./scripts/adapt_best.sh
 ```
 
-This is the normal path. It writes adapted weights to `logs/semanticgallery_private_data_adapted/weights.safetensors`.
+This is the normal path. It writes adapted weights to `logs/semanticgallery_private_data_adapted/<gallery-key>/weights.safetensors`.
 
 ### Inputs
 
@@ -50,14 +50,14 @@ The differences are small, but `0.30 / 0.15` gave the lowest validation loss in 
 
 ```bash
 PREPARE_PUBLIC_DATA=1 PRIVATE_GALLERY_DIR=/absolute/path/to/gallery ./scripts/prepare_data.sh
-./scripts/train_best.sh
+PRIVATE_GALLERY_DIR=/absolute/path/to/gallery ./scripts/train_best.sh
 ```
 
 Use this path only when you want to reproduce or replace the published Stage 1 checkpoint.
 
 The reference Stage 1 run took about `42` minutes on an Apple M4 MacBook Air. In practice, reserve roughly one hour when reproducing it locally.
 
-### Public Training Corpus
+### Public Development Corpus
 
 | Source | Records | Share of public corpus |
 | --- | ---: | ---: |
@@ -66,4 +66,4 @@ The reference Stage 1 run took about `42` minutes on an Apple M4 MacBook Air. In
 | Screen2Words val | `2,364` | `4.7%` |
 | Total | `49,890` | `100%` |
 
-The held-out comparison that selected `Stage 1 -> Stage 2` is documented in [benchmarks.md](benchmarks.md).
+In the current repo, the Flickr30k portion is built from the published `lmms-lab/flickr30k` corpus and then split locally with the deterministic `80/20` rule in `mlx_pipeline.py`. Treat this path as a local development training run, not as a strict reproduction of the selection benchmark. The selection notes in [benchmarks.md](benchmarks.md) remain development reference results recorded outside the shipped quickstart path.

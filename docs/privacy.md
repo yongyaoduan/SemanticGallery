@@ -10,19 +10,19 @@
 
 ## Local Files Written
 
-- `datasets/private_gallery_local/full_manifest.jsonl` stores absolute image paths and weak labels
-- `datasets/private_gallery_local/private_adapt_data.jsonl` stores the capped local adaptation subset
-- `datasets/private_gallery_local/private_adapt_data_state.json` stores the tracked local adaptation rows, missing-row counts, and the content signature used for Stage 2 reuse
-- `logs/semanticgallery_private_data_adapted/weights.safetensors` stores the latest local Stage 2 weights
-- `logs/semanticgallery_private_data_adapted/history.jsonl` stores per-epoch local adaptation history
-- `logs/semanticgallery_private_data_adapted/summary.json` stores the latest local adaptation summary
-- `logs/semanticgallery_private_data_adapted/quickstart_state.json` stores the gallery path, Stage 1 checkpoint path, and Stage 2 reuse signature used by quickstart
-- `deployment/search_config_gallery_mlx.json` stores the selected gallery path, model path, index paths, and metadata-manifest path
-- `deployment/*_mlx_siglip2.paths.txt` stores absolute gallery paths for the current index
-- `deployment/*_mlx_siglip2_embeddings.npy` stores the current gallery embedding bank
-- `deployment/*_mlx_siglip2_skipped.json` stores skipped local files and error reasons
-- `deployment/*_mlx_siglip2_file_state.json` stores per-image cache state for incremental gallery sync
-- `deployment/*_mlx_siglip2_bank_state.json` stores gallery-level cache state for incremental gallery sync
+- `datasets/private_gallery_local/<gallery-key>/full_manifest.jsonl` stores absolute image paths and weak labels
+- `datasets/private_gallery_local/<gallery-key>/private_adapt_data.jsonl` stores the capped local adaptation subset
+- `datasets/private_gallery_local/<gallery-key>/private_adapt_data_state.json` stores the tracked local adaptation rows, missing-row counts, and the content signature used for Stage 2 reuse
+- `logs/semanticgallery_private_data_adapted/<gallery-key>/weights.safetensors` stores the latest local Stage 2 weights
+- `logs/semanticgallery_private_data_adapted/<gallery-key>/history.jsonl` stores per-epoch local adaptation history
+- `logs/semanticgallery_private_data_adapted/<gallery-key>/summary.json` stores the latest local adaptation summary
+- `logs/semanticgallery_private_data_adapted/<gallery-key>/quickstart_state.json` stores the gallery path, Stage 1 checkpoint path, and Stage 2 reuse signature used by quickstart
+- `deployment/search_configs/<gallery-key>.json` stores the selected gallery path, model path, index paths, and metadata-manifest path
+- `deployment/<gallery-key>_mlx_siglip2.paths.txt` stores absolute gallery paths for the current index
+- `deployment/<gallery-key>_mlx_siglip2_embeddings.npy` stores the current gallery embedding bank
+- `deployment/<gallery-key>_mlx_siglip2_skipped.json` stores skipped local files and error reasons
+- `deployment/<gallery-key>_mlx_siglip2_file_state.json` stores per-image cache state for incremental gallery sync
+- `deployment/<gallery-key>_mlx_siglip2_bank_state.json` stores gallery-level cache state for incremental gallery sync
 - `deployment/.thumb_cache/` stores generated JPEG thumbnails for the web UI
 - `deployment/.delete_staging/` stores temporary files while delete rewrites the local index
 
@@ -36,7 +36,7 @@
 
 - Deletes from the web UI update the local index immediately.
 - If the Stage 2 adaptation weights change, `quickstart.sh` rebuilds the gallery index automatically before it starts the web app.
-- If gallery files are added, removed, renamed, or modified between runs, `quickstart.sh` synchronizes the gallery index automatically on the next startup. Unchanged images are reused, new or changed images are encoded, and deleted images are removed from the local index.
+- If gallery files are added, removed, renamed, or modified between runs, `quickstart.sh` synchronizes the gallery index automatically on the next startup. Unchanged images are reused, and only files whose path, size, or `mtime_ns` changed are re-encoded. Deleted images are removed from the local index.
 - Rerun `quickstart.sh` with `FORCE=1` only when you want to force a manual rebuild even though the current gallery and model state still match the cached index.
 
 ## Stage 2 Limit

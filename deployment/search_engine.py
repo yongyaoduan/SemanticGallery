@@ -4,18 +4,15 @@ from dataclasses import dataclass
 import json
 import tempfile
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
-import mlx.core as mx
 import numpy as np
-from PIL import Image
 
 import sys
 
 sys.path.append(Path(__file__).resolve().parents[1].as_posix())
 
 from deployment.search_utils import apply_metadata_boost, is_searchable_query, load_metadata_texts
-from mlx_pipeline import l2_normalize, load_mlx_siglip_model, open_rgb_image
 
 SUPPORTED_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".heic", ".heif"}
 
@@ -64,7 +61,7 @@ class BaseSearchEngine:
     def search(self, query_text: str, k: int = 20) -> List[Tuple[str, Optional[str]]]:
         raise NotImplementedError
 
-    def search_by_image(self, image: Image.Image, k: int = 20) -> List[Tuple[str, Optional[str]]]:
+    def search_by_image(self, image: Any, k: int = 20) -> List[Tuple[str, Optional[str]]]:
         raise NotImplementedError
 
     def search_similar(self, image_path: str | Path, k: int = 20) -> List[Tuple[str, Optional[str]]]:
@@ -239,7 +236,7 @@ class BaseSearchEngine:
 
         return IndexSnapshot(
             image_paths=list(self.image_paths),
-            embeddings=np.asarray(self.embeddings, dtype=np.float32).copy(),
+            embeddings=self.embeddings,
             metadata_texts=list(self.metadata_texts) if self.metadata_texts is not None else None,
             indexed_paths_text=indexed_paths_text,
             metadata_manifest_text=metadata_manifest_text,
@@ -353,6 +350,7 @@ class BaseSearchEngine:
 class MLXSigLIPSearchEngine(BaseSearchEngine):
     def __init__(self, config: dict, device: str = "auto"):
         del device
+        from mlx_pipeline import load_mlx_siglip_model
 
         self.config = config
         self.gallery_path = Path(config["gallery_path"]).expanduser().resolve()
@@ -403,6 +401,10 @@ class MLXSigLIPSearchEngine(BaseSearchEngine):
         )
 
     def encode_query(self, query_text: str) -> np.ndarray:
+        import mlx.core as mx
+
+        from mlx_pipeline import l2_normalize
+
         inputs = self.processor(
             text=[query_text],
             return_tensors="mlx",
@@ -415,7 +417,11 @@ class MLXSigLIPSearchEngine(BaseSearchEngine):
         mx.eval(embedding)
         return np.asarray(embedding, dtype=np.float32)[0]
 
-    def encode_query_image(self, image: Image.Image) -> np.ndarray:
+    def encode_query_image(self, image: Any) -> np.ndarray:
+        import mlx.core as mx
+
+        from mlx_pipeline import l2_normalize
+
         inputs = self.processor(images=[image], return_tensors="mlx")
         image_inputs = {"pixel_values": inputs["pixel_values"]}
         if "pixel_attention_mask" in inputs:
@@ -453,6 +459,8 @@ class MLXSigLIPSearchEngine(BaseSearchEngine):
                 query_vector = query_vector / norm
             scores = self.embeddings @ query_vector
             return self._rank_scores(scores, k=k, exclude_index=index)
+
+        from mlx_pipeline import open_rgb_image
 
         image = open_rgb_image(image_path)
         query_vector = self.encode_query_image(image)

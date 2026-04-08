@@ -5,11 +5,8 @@ set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_env.sh"
 
 GALLERY_DIR="${GALLERY_DIR:-${1:-}}"
-FINAL_RUN_DIR="$ROOT_DIR/logs/semanticgallery_private_data_adapted"
-FINAL_WEIGHTS_FILE_PATH="$FINAL_RUN_DIR/weights.safetensors"
-QUICKSTART_STATE_FILE_PATH="$FINAL_RUN_DIR/quickstart_state.json"
-PRIVATE_MANIFEST_FILE_PATH="$ROOT_DIR/datasets/private_gallery_local/private_adapt_data.jsonl"
-PRIVATE_MANIFEST_STATE_FILE_PATH="$ROOT_DIR/datasets/private_gallery_local/private_adapt_data_state.json"
+PRIVATE_DATA_DIR="${PRIVATE_DATA_DIR:-}"
+FINAL_RUN_DIR="${FINAL_RUN_DIR:-}"
 STAGE1_WEIGHTS_FILE_PATH="${STAGE1_WEIGHTS_FILE_PATH:-$LOCAL_STAGE1_WEIGHTS_FILE_PATH}"
 MAX_EPOCHS_STAGE2="${MAX_EPOCHS_STAGE2:-1}"
 TRAIN_BATCH_SIZE="${TRAIN_BATCH_SIZE:-4}"
@@ -25,8 +22,8 @@ MAX_TRAIN_STEPS="${MAX_TRAIN_STEPS:-}"
 MAX_VAL_STEPS="${MAX_VAL_STEPS:-}"
 HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-36168}"
-CONFIG_FILE_PATH="${CONFIG_FILE_PATH:-$ROOT_DIR/deployment/search_config_gallery_mlx.json}"
-METADATA_MANIFEST_FILE_PATH="${METADATA_MANIFEST_FILE_PATH:-$ROOT_DIR/datasets/private_gallery_local/full_manifest.jsonl}"
+CONFIG_FILE_PATH="${CONFIG_FILE_PATH:-}"
+METADATA_MANIFEST_FILE_PATH="${METADATA_MANIFEST_FILE_PATH:-}"
 MODEL_PRECISION="${MODEL_PRECISION:-bfloat16}"
 RUNTIME_DIR="${RUNTIME_DIR:-$ROOT_DIR/logs/runtime}"
 LOG_FILE_PATH="${LOG_FILE_PATH:-$RUNTIME_DIR/semanticgallery_${PORT}.log}"
@@ -70,12 +67,21 @@ run_logged() {
 run_logged ensure_env
 
 resolved_gallery_dir="$(cd "$GALLERY_DIR" && pwd)"
+gallery_key="$(gallery_artifact_key "$resolved_gallery_dir")"
+PRIVATE_DATA_DIR="${PRIVATE_DATA_DIR:-$ROOT_DIR/datasets/private_gallery_local/$gallery_key}"
+FINAL_RUN_DIR="${FINAL_RUN_DIR:-$ROOT_DIR/logs/semanticgallery_private_data_adapted/$gallery_key}"
+FINAL_WEIGHTS_FILE_PATH="$FINAL_RUN_DIR/weights.safetensors"
+QUICKSTART_STATE_FILE_PATH="$FINAL_RUN_DIR/quickstart_state.json"
+PRIVATE_MANIFEST_FILE_PATH="$PRIVATE_DATA_DIR/private_adapt_data.jsonl"
+PRIVATE_MANIFEST_STATE_FILE_PATH="$PRIVATE_DATA_DIR/private_adapt_data_state.json"
+CONFIG_FILE_PATH="${CONFIG_FILE_PATH:-$ROOT_DIR/deployment/search_configs/${gallery_key}.json}"
+METADATA_MANIFEST_FILE_PATH="${METADATA_MANIFEST_FILE_PATH:-$PRIVATE_DATA_DIR/full_manifest.jsonl}"
 resolved_stage1_weights_file_path="$(
   resolve_stage1_weights_file "$STAGE1_WEIGHTS_FILE_PATH" 2> >(tee -a "$LOG_FILE_PATH" >&2)
 )"
 
 log_step "Preparing adaptation data"
-run_logged env PREPARE_PUBLIC_DATA=0 PRIVATE_GALLERY_DIR="$resolved_gallery_dir" "$ROOT_DIR/scripts/prepare_data.sh"
+run_logged env PREPARE_PUBLIC_DATA=0 PRIVATE_GALLERY_DIR="$resolved_gallery_dir" PRIVATE_DATA_DIR="$PRIVATE_DATA_DIR" "$ROOT_DIR/scripts/prepare_data.sh"
 
 require_file "$PRIVATE_MANIFEST_FILE_PATH"
 require_file "$PRIVATE_MANIFEST_STATE_FILE_PATH"
@@ -143,7 +149,7 @@ PY
 fi
 
 if [[ ! -f "$FINAL_WEIGHTS_FILE_PATH" || "$current_signature" != "$stored_signature" ]]; then
-  run_logged env STAGE1_WEIGHTS_FILE_PATH="$resolved_stage1_weights_file_path" "$ROOT_DIR/scripts/adapt_best.sh"
+  run_logged env STAGE1_WEIGHTS_FILE_PATH="$resolved_stage1_weights_file_path" PRIVATE_DATA_DIR="$PRIVATE_DATA_DIR" FINAL_RUN_DIR="$FINAL_RUN_DIR" "$ROOT_DIR/scripts/adapt_best.sh"
   CURRENT_SIGNATURE="$current_signature" "$PYTHON_BIN_PATH" - <<PY
 import json
 import os

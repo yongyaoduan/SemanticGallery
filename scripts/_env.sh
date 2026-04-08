@@ -6,7 +6,6 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PYTHON_BIN_PATH="$ROOT_DIR/.venv/bin/python"
 MLX_MODEL_DIR="$ROOT_DIR/.cache/mlx/siglip2-base-patch16-224-f32"
 LOCAL_STAGE1_WEIGHTS_FILE_PATH="$ROOT_DIR/logs/semanticgallery_public_stage1/weights.safetensors"
-LOCAL_FINAL_WEIGHTS_FILE_PATH="$ROOT_DIR/logs/semanticgallery_private_data_adapted/weights.safetensors"
 PUBLISHED_STAGE1_REPO_ID="Lucas20250626/semanticgallery-mlx-siglip2-stage1"
 PUBLISHED_STAGE1_REVISION="main"
 PUBLISHED_STAGE1_CACHE_DIR="$ROOT_DIR/.cache/semanticgallery/stage1"
@@ -36,6 +35,15 @@ log_kv() {
 die() {
   printf 'error: %s\n' "$*" >&2
   exit 1
+}
+
+gallery_artifact_key() {
+  "$PYTHON_BIN_PATH" - "$1" <<'PY'
+from deployment.gallery_keys import gallery_artifact_key
+import sys
+
+print(gallery_artifact_key(sys.argv[1]))
+PY
 }
 
 require_uv() {
@@ -190,8 +198,8 @@ resolve_stage1_weights_file() {
 }
 
 resolve_weights_file() {
-  local preferred_file_path="${1:-$LOCAL_FINAL_WEIGHTS_FILE_PATH}"
-  if [[ -f "$preferred_file_path" ]]; then
+  local preferred_file_path="${1:-}"
+  if [[ -n "$preferred_file_path" && -f "$preferred_file_path" ]]; then
     printf '%s\n' "$preferred_file_path"
     return
   fi
@@ -204,63 +212,15 @@ build_gallery_bank_state() {
   local precision="$3"
   local weights_file_path="${4:-}"
   "$PYTHON_BIN_PATH" - <<PY
-import hashlib
 import json
-from pathlib import Path
+from deployment.gallery_state import build_gallery_bank_state_payload
 
-gallery_dir = Path("${gallery_dir}").expanduser().resolve().as_posix()
-model_dir = Path("${model_dir}").expanduser().resolve().as_posix()
-precision = "${precision}"
-weights_value = "${weights_file_path}"
-weights_file_path = Path(weights_value).expanduser().resolve() if weights_value else None
-
-def sha256_file(path: Path) -> str | None:
-    if not path.exists():
-        return None
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        while True:
-            chunk = handle.read(1024 * 1024)
-            if not chunk:
-                break
-            digest.update(chunk)
-    return digest.hexdigest()
-
-payload = {
-    "gallery_dir": gallery_dir,
-    "model_dir": model_dir,
-    "precision": precision,
-    "weights_file_path": weights_file_path.as_posix() if weights_file_path else "",
-    "weights_file_sha256": sha256_file(weights_file_path) if weights_file_path else None,
-}
-
-gallery_root = Path(gallery_dir)
-gallery_state = hashlib.sha256()
-gallery_file_count = 0
-gallery_total_bytes = 0
-supported_suffixes = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".heic", ".heif"}
-
-for image_path in sorted(
-    path
-    for path in gallery_root.rglob("*")
-    if path.is_file()
-    and not any(part.startswith(".") for part in path.relative_to(gallery_root).parts)
-    and path.suffix.lower() in supported_suffixes
-):
-    stat = image_path.stat()
-    relative_path = image_path.relative_to(gallery_root).as_posix()
-    gallery_state.update(relative_path.encode("utf-8"))
-    gallery_state.update(b"\0")
-    gallery_state.update(str(stat.st_size).encode("utf-8"))
-    gallery_state.update(b"\0")
-    gallery_state.update(str(stat.st_mtime_ns).encode("utf-8"))
-    gallery_state.update(b"\n")
-    gallery_file_count += 1
-    gallery_total_bytes += stat.st_size
-
-payload["gallery_file_count"] = gallery_file_count
-payload["gallery_total_bytes"] = gallery_total_bytes
-payload["gallery_state_sha256"] = gallery_state.hexdigest()
+payload = build_gallery_bank_state_payload(
+    "${gallery_dir}",
+    model_dir="${model_dir}",
+    precision="${precision}",
+    weights_file_path="${weights_file_path}" or None,
+)
 print(json.dumps(payload, sort_keys=True, ensure_ascii=False))
 PY
 }
@@ -272,6 +232,7 @@ prepare_mlx_search_config() {
   local weights_file_path="${4:-}"
   local precision="${5:-bfloat16}"
   local gallery_name
+  local gallery_key
   local embeddings_file_path
   local indexed_paths_file_path
   local skipped_images_file_path
@@ -293,16 +254,17 @@ prepare_mlx_search_config() {
 
   gallery_dir="$(cd "$gallery_dir" && pwd)"
   gallery_name="$(basename "$gallery_dir")"
-  embeddings_file_path="$ROOT_DIR/deployment/${gallery_name}_mlx_siglip2_embeddings.npy"
-  indexed_paths_file_path="$ROOT_DIR/deployment/${gallery_name}_mlx_siglip2.paths.txt"
-  skipped_images_file_path="$ROOT_DIR/deployment/${gallery_name}_mlx_siglip2_skipped.json"
-  file_state_file_path="$ROOT_DIR/deployment/${gallery_name}_mlx_siglip2_file_state.json"
-  bank_state_file_path="$ROOT_DIR/deployment/${gallery_name}_mlx_siglip2_bank_state.json"
-  legacy_embeddings_file_path="$ROOT_DIR/deployment/${gallery_name}_siglip2_embeddings.npy"
-  legacy_indexed_paths_file_path="$ROOT_DIR/deployment/${gallery_name}_siglip2.paths.txt"
-  legacy_skipped_images_file_path="$ROOT_DIR/deployment/${gallery_name}_siglip2_skipped.json"
-  legacy_file_state_file_path="$ROOT_DIR/deployment/${gallery_name}_siglip2_file_state.json"
-  legacy_bank_state_file_path="$ROOT_DIR/deployment/${gallery_name}_siglip2_bank_state.json"
+  gallery_key="$(gallery_artifact_key "$gallery_dir")"
+  embeddings_file_path="$ROOT_DIR/deployment/${gallery_key}_mlx_siglip2_embeddings.npy"
+  indexed_paths_file_path="$ROOT_DIR/deployment/${gallery_key}_mlx_siglip2.paths.txt"
+  skipped_images_file_path="$ROOT_DIR/deployment/${gallery_key}_mlx_siglip2_skipped.json"
+  file_state_file_path="$ROOT_DIR/deployment/${gallery_key}_mlx_siglip2_file_state.json"
+  bank_state_file_path="$ROOT_DIR/deployment/${gallery_key}_mlx_siglip2_bank_state.json"
+  legacy_embeddings_file_path="$ROOT_DIR/deployment/${gallery_name}_mlx_siglip2_embeddings.npy"
+  legacy_indexed_paths_file_path="$ROOT_DIR/deployment/${gallery_name}_mlx_siglip2.paths.txt"
+  legacy_skipped_images_file_path="$ROOT_DIR/deployment/${gallery_name}_mlx_siglip2_skipped.json"
+  legacy_file_state_file_path="$ROOT_DIR/deployment/${gallery_name}_mlx_siglip2_file_state.json"
+  legacy_bank_state_file_path="$ROOT_DIR/deployment/${gallery_name}_mlx_siglip2_bank_state.json"
 
   if [[ "${FORCE:-0}" != "1" && -z "$weights_file_path" && -f "$legacy_embeddings_file_path" && -f "$legacy_indexed_paths_file_path" && -f "$legacy_skipped_images_file_path" ]]; then
     embeddings_file_path="$legacy_embeddings_file_path"

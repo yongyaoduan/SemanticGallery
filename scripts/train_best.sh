@@ -6,13 +6,31 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_env.sh"
 
 ensure_mlx_model
 
+PRIVATE_GALLERY_DIR="${PRIVATE_GALLERY_DIR:-}"
+PRIVATE_DATA_DIR="${PRIVATE_DATA_DIR:-}"
+if [[ -z "$PRIVATE_DATA_DIR" ]]; then
+  if [[ -n "$PRIVATE_GALLERY_DIR" ]]; then
+    PRIVATE_DATA_DIR="$ROOT_DIR/datasets/private_gallery_local/$(gallery_artifact_key "$PRIVATE_GALLERY_DIR")"
+  else
+    PRIVATE_DATA_DIR="$ROOT_DIR/datasets/private_gallery_local"
+  fi
+fi
 require_file "$ROOT_DIR/datasets/flickr30k/captions.txt"
 require_file "$ROOT_DIR/datasets/screen2words_train/manifest.jsonl"
 require_file "$ROOT_DIR/datasets/screen2words_val/manifest.jsonl"
-require_file "$ROOT_DIR/datasets/private_gallery_local/private_adapt_data.jsonl"
+require_file "$PRIVATE_DATA_DIR/private_adapt_data.jsonl"
 
 PUBLIC_RUN_NAME="${PUBLIC_RUN_NAME:-semanticgallery_public_stage1}"
 FINAL_RUN_NAME="${FINAL_RUN_NAME:-semanticgallery_public_plus_private_data}"
+PUBLIC_RUN_DIR="${PUBLIC_RUN_DIR:-$ROOT_DIR/logs/$PUBLIC_RUN_NAME}"
+FINAL_RUN_DIR="${FINAL_RUN_DIR:-}"
+if [[ -z "$FINAL_RUN_DIR" ]]; then
+  if [[ -n "$PRIVATE_GALLERY_DIR" ]]; then
+    FINAL_RUN_DIR="$ROOT_DIR/logs/semanticgallery_public_plus_private_data/$(gallery_artifact_key "$PRIVATE_GALLERY_DIR")"
+  else
+    FINAL_RUN_DIR="$ROOT_DIR/logs/$FINAL_RUN_NAME"
+  fi
+fi
 MAX_EPOCHS_STAGE1="${MAX_EPOCHS_STAGE1:-1}"
 MAX_EPOCHS_STAGE2="${MAX_EPOCHS_STAGE2:-1}"
 TRAIN_BATCH_SIZE="${TRAIN_BATCH_SIZE:-4}"
@@ -28,10 +46,8 @@ PRIVATE_DISTILL_WEIGHT="${PRIVATE_DISTILL_WEIGHT:-0.15}"
 MAX_TRAIN_STEPS="${MAX_TRAIN_STEPS:-}"
 MAX_VAL_STEPS="${MAX_VAL_STEPS:-}"
 
-PUBLIC_RUN_DIR="$ROOT_DIR/logs/$PUBLIC_RUN_NAME"
-FINAL_RUN_DIR="$ROOT_DIR/logs/$FINAL_RUN_NAME"
 PUBLIC_MANIFEST_PATHS="$ROOT_DIR/datasets/screen2words_train/manifest.jsonl,$ROOT_DIR/datasets/screen2words_val/manifest.jsonl"
-FINAL_MANIFEST_PATHS="$PUBLIC_MANIFEST_PATHS,$ROOT_DIR/datasets/private_gallery_local/private_adapt_data.jsonl"
+FINAL_MANIFEST_PATHS="$PUBLIC_MANIFEST_PATHS,$PRIVATE_DATA_DIR/private_adapt_data.jsonl"
 
 common_args=(
   --model-path "$MLX_MODEL_DIR"

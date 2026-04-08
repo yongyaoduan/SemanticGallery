@@ -9,6 +9,8 @@ from typing import Iterable, Sequence
 
 from PIL import Image, ImageOps
 
+from deployment.gallery_state import iter_gallery_paths
+
 
 DEFAULT_MLX_MODEL_PATH = Path(__file__).resolve().parent / ".cache" / "mlx" / "siglip2-base-patch16-224-f32"
 SUPPORTED_IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".heic", ".heif"}
@@ -91,13 +93,7 @@ def repair_local_siglip_tokenizer_config(model_path: Path) -> None:
 
 def collect_gallery_paths(gallery_path: Path) -> list[Path]:
     maybe_register_heif_support()
-    return sorted(
-        path
-        for path in gallery_path.rglob("*")
-        if path.is_file()
-        and not any(part.startswith(".") for part in path.relative_to(gallery_path).parts)
-        and path.suffix.lower() in SUPPORTED_IMAGE_SUFFIXES
-    )
+    return iter_gallery_paths(gallery_path)
 
 
 def open_rgb_image(image_path: str | Path) -> Image.Image:

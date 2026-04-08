@@ -4,27 +4,26 @@ import argparse
 import json
 from pathlib import Path
 
-import mlx.core as mx
 import numpy as np
-from tqdm import tqdm
 
 import sys
 
 sys.path.append(Path(__file__).resolve().parents[1].as_posix())
 
-from mlx_pipeline import (
-    DEFAULT_MLX_MODEL_PATH,
-    collect_gallery_paths,
-    l2_normalize,
-    load_mlx_siglip_model,
-    open_rgb_image,
-)
+from deployment.gallery_keys import gallery_artifact_key
+from deployment.gallery_state import iter_gallery_paths
+
+
+def default_model_path() -> Path:
+    from mlx_pipeline import DEFAULT_MLX_MODEL_PATH
+
+    return DEFAULT_MLX_MODEL_PATH
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Encode a local image gallery with the pure-MLX SigLIP2 stack.")
     parser.add_argument("--gallery-path", required=True)
-    parser.add_argument("--model-path", default=DEFAULT_MLX_MODEL_PATH.as_posix())
+    parser.add_argument("--model-path", default=default_model_path().as_posix())
     parser.add_argument("--weights-file", default=None)
     parser.add_argument("--precision", choices=["float32", "bfloat16"], default="bfloat16")
     parser.add_argument("--batch-size", type=int, default=8)
@@ -42,7 +41,7 @@ def default_output_paths(
     skipped_output: str | None,
     file_state_output: str | None,
 ):
-    stem = gallery_path.name
+    stem = gallery_artifact_key(gallery_path)
     deployment_dir = Path(__file__).resolve().parent
     embeddings_path = Path(embeddings_output).expanduser().resolve() if embeddings_output else deployment_dir / f"{stem}_mlx_siglip2_embeddings.npy"
     paths_path = Path(paths_output).expanduser().resolve() if paths_output else deployment_dir / f"{stem}_mlx_siglip2.paths.txt"
@@ -101,6 +100,11 @@ def load_previous_embeddings(gallery_path: Path, embeddings_path: Path, paths_pa
 
 
 def encode_paths(model, processor, image_paths: list[Path], batch_size: int):
+    import mlx.core as mx
+    from tqdm import tqdm
+
+    from mlx_pipeline import l2_normalize, open_rgb_image
+
     encoded = {}
     skipped = []
 
@@ -130,6 +134,8 @@ def encode_paths(model, processor, image_paths: list[Path], batch_size: int):
 
 
 def main():
+    from mlx_pipeline import load_mlx_siglip_model
+
     args = parse_args()
     gallery_path = Path(args.gallery_path).expanduser().resolve()
     if not gallery_path.exists():
@@ -147,7 +153,7 @@ def main():
     skipped_path.parent.mkdir(parents=True, exist_ok=True)
     file_state_path.parent.mkdir(parents=True, exist_ok=True)
 
-    image_paths = collect_gallery_paths(gallery_path)
+    image_paths = iter_gallery_paths(gallery_path)
     if not image_paths:
         raise ValueError(f"No supported images found under {gallery_path}")
     print(f"gallery_path={gallery_path}")

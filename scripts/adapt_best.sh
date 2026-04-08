@@ -7,11 +7,28 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_env.sh"
 ensure_mlx_model
 ensure_published_stage2_public_anchor
 
-require_file "$ROOT_DIR/datasets/private_gallery_local/private_adapt_data.jsonl"
+PRIVATE_GALLERY_DIR="${PRIVATE_GALLERY_DIR:-}"
+PRIVATE_DATA_DIR="${PRIVATE_DATA_DIR:-}"
+if [[ -z "$PRIVATE_DATA_DIR" ]]; then
+  if [[ -n "$PRIVATE_GALLERY_DIR" ]]; then
+    PRIVATE_DATA_DIR="$ROOT_DIR/datasets/private_gallery_local/$(gallery_artifact_key "$PRIVATE_GALLERY_DIR")"
+  else
+    PRIVATE_DATA_DIR="$ROOT_DIR/datasets/private_gallery_local"
+  fi
+fi
+require_file "$PRIVATE_DATA_DIR/private_adapt_data.jsonl"
 require_file "$PUBLISHED_STAGE2_PUBLIC_ANCHOR_FLICKR_DIR/captions.txt"
 require_file "$PUBLISHED_STAGE2_PUBLIC_ANCHOR_SCREEN2WORDS_MANIFEST_FILE_PATH"
 
 FINAL_RUN_NAME="${FINAL_RUN_NAME:-semanticgallery_private_data_adapted}"
+FINAL_RUN_DIR="${FINAL_RUN_DIR:-}"
+if [[ -z "$FINAL_RUN_DIR" ]]; then
+  if [[ -n "$PRIVATE_GALLERY_DIR" ]]; then
+    FINAL_RUN_DIR="$ROOT_DIR/logs/semanticgallery_private_data_adapted/$(gallery_artifact_key "$PRIVATE_GALLERY_DIR")"
+  else
+    FINAL_RUN_DIR="$ROOT_DIR/logs/$FINAL_RUN_NAME"
+  fi
+fi
 STAGE1_WEIGHTS_FILE_PATH="${STAGE1_WEIGHTS_FILE_PATH:-$LOCAL_STAGE1_WEIGHTS_FILE_PATH}"
 MAX_EPOCHS_STAGE2="${MAX_EPOCHS_STAGE2:-1}"
 TRAIN_BATCH_SIZE="${TRAIN_BATCH_SIZE:-4}"
@@ -26,8 +43,7 @@ PRIVATE_DISTILL_WEIGHT="${PRIVATE_DISTILL_WEIGHT:-0.15}"
 MAX_TRAIN_STEPS="${MAX_TRAIN_STEPS:-}"
 MAX_VAL_STEPS="${MAX_VAL_STEPS:-}"
 
-FINAL_RUN_DIR="$ROOT_DIR/logs/$FINAL_RUN_NAME"
-FINAL_MANIFEST_PATHS="$PUBLISHED_STAGE2_PUBLIC_ANCHOR_SCREEN2WORDS_MANIFEST_FILE_PATH,$ROOT_DIR/datasets/private_gallery_local/private_adapt_data.jsonl"
+FINAL_MANIFEST_PATHS="$PUBLISHED_STAGE2_PUBLIC_ANCHOR_SCREEN2WORDS_MANIFEST_FILE_PATH,$PRIVATE_DATA_DIR/private_adapt_data.jsonl"
 BASE_STAGE1_WEIGHTS_FILE_PATH="$(resolve_stage1_weights_file "$STAGE1_WEIGHTS_FILE_PATH")"
 
 common_args=(

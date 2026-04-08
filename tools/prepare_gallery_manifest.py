@@ -18,9 +18,9 @@ DEFAULT_FOLDER_ALIASES = {
 def parse_args():
     parser = argparse.ArgumentParser(description="Create a weakly supervised manifest from a private gallery.")
     parser.add_argument("--gallery-path", required=True)
-    parser.add_argument("--output-path", default="./datasets/private_gallery/manifest.jsonl")
+    parser.add_argument("--output-path", default="./datasets/private_gallery_local/full_manifest.jsonl")
     parser.add_argument("--val-ratio", type=float, default=0.1)
-    parser.add_argument("--source-name", default="private_gallery_weak")
+    parser.add_argument("--source-name", default="private_gallery_local")
     return parser.parse_args()
 
 

@@ -48,7 +48,7 @@ The shipped runtime is pure MLX because it gives the best low-precision performa
 
 `Base` is the released `google/siglip2-base-patch16-224` checkpoint with no repo-specific tuning. `Stage 1` fine-tunes that checkpoint on Flickr30k plus Screen2Words. `Stage 2 only` starts from the base checkpoint and runs only gallery-specific adaptation. `Stage 1 -> Stage 2` starts from the published Stage 1 checkpoint and then runs gallery-specific adaptation.
 
-These numbers are reference selection results recorded during development. They document why the repo ships `Stage 1 -> Stage 2`; they are not reproduced by an in-repo benchmark command.
+These numbers are reference selection results recorded during development. They document why the repo ships `Stage 1 -> Stage 2`; they are not reproduced by an in-repo benchmark command, and the in-repo full retraining path should not be read as a strict reproduction of these tables.
 
 ### Reference Setup
 
@@ -57,8 +57,8 @@ These numbers are reference selection results recorded during development. They 
 | Retrieval task | text-to-image retrieval |
 | Base model | `google/siglip2-base-patch16-224` |
 | Local adaptation data | up to `100` images from a personal gallery with phone photos and screenshots |
-| Public held-out test | Flickr30k official test split: `1000` images, `5000` caption queries |
-| Screenshot held-out test | Screen2Words official test split: `4310` images, `21550` caption queries |
+| Public evaluation corpus | Flickr30k evaluation corpus used during development: `1000` images, `5000` caption queries |
+| Screenshot evaluation corpus | Screen2Words test split used during development: `4310` images, `21550` caption queries |
 | Metrics | `Recall@1`, `Recall@5`, `Recall@10` |
 
 ### Flickr30k Test
@@ -82,10 +82,10 @@ These numbers are reference selection results recorded during development. They 
 ### Analysis
 
 - `Stage 2 only` does not replace public fine-tuning
-- `Stage 1` provides nearly all held-out retrieval gain
+- `Stage 1` provides nearly all public retrieval gain in this reference run
 - `Stage 1 -> Stage 2` keeps those public gains while adding gallery-specific adaptation
 
-The shipped training path is `Stage 1 -> Stage 2`.
+The shipped training path is `Stage 1 -> Stage 2`. The current repo keeps the published Stage 1 checkpoint as the default path; the local full-retraining path is a development path, not the benchmark source of record.
 
 ## Stage 2 Weight Selection
 

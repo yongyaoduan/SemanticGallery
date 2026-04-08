@@ -10,9 +10,9 @@ from tqdm import tqdm
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Download and normalize Flickr30k into the local folder layout.")
+    parser = argparse.ArgumentParser(description="Download and normalize a Flickr30k corpus into the local folder layout.")
     parser.add_argument("--dataset", default="lmms-lab/flickr30k", help="Hugging Face dataset name.")
-    parser.add_argument("--split", default="test", help="Dataset split to download.")
+    parser.add_argument("--split", default="test", help="Dataset split to download. The current default corpus only publishes a test split.")
     parser.add_argument("--output-dir", default="./datasets/flickr30k", help="Local output directory.")
     parser.add_argument("--max-images", type=int, default=None, help="Optional cap for quick experiments.")
     parser.add_argument("--sample-seed", type=int, default=None, help="Optional shuffle seed used before applying --max-images.")

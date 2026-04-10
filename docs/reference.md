@@ -8,14 +8,14 @@ NAME=value OTHER=value ./scripts/quickstart.sh
 
 This page lists the user-facing environment variables exposed by the shell entrypoints in `scripts/`.
 
-`<gallery-key>` below means the stable key derived from the absolute gallery path. Quick start uses it to keep manifests, adapted weights, search configs, and gallery-bank files isolated per gallery.
+`<gallery-key>` below means the stable key derived from the absolute gallery path. Quick start uses it so manifests, adapted weights, search configs, and gallery-bank files stay isolated per gallery.
 
 ## Quick Start
 
 | Variable | Details |
 | --- | --- |
 | `GALLERY_DIR` | Required. Set an absolute path to the local image folder that SemanticGallery should adapt, index, and serve. |
-| `STAGE1_WEIGHTS_FILE_PATH` | Default: `logs/semanticgallery_public_stage1/weights.safetensors`. Stage 1 model file path. SemanticGallery checks this path first. If a local file exists there, it uses that file. Otherwise it downloads the published Stage 1 checkpoint and uses that. |
+| `STAGE1_WEIGHTS_FILE_PATH` | Default: `logs/semanticgallery_public_stage1/weights.safetensors`. Stage 1 model file path. SemanticGallery checks this path first. If a local file exists there, it uses that file. Otherwise it downloads the published Stage 1 checkpoint. |
 | `HOST` | Default: `127.0.0.1`. `127.0.0.1`: bind only the local machine. `0.0.0.0`: bind every interface and expose the app to the local network. Any other address: bind only that specific interface. |
 | `PORT` | Default: `36168`. Set any unused TCP port to change the web URL and the runtime log and PID filenames. |
 | `CONFIG_FILE_PATH` | Default: `deployment/search_configs/<gallery-key>.json`. Set a JSON file path to change where the generated search config is written. |
@@ -24,7 +24,7 @@ This page lists the user-facing environment variables exposed by the shell entry
 | `RUNTIME_DIR` | Default: `logs/runtime`. Set a directory path to change where `quickstart.sh` writes the startup log and PID file. |
 | `LOG_FILE_PATH` | Default: `logs/runtime/semanticgallery_<port>.log`. Set a file path to override the startup log location. |
 | `PID_FILE_PATH` | Default: `logs/runtime/semanticgallery_<port>.pid`. Set a file path to override the PID file location. |
-| `STARTUP_TIMEOUT_SECONDS` | Default: `300`. This is an idle timeout, not a total startup limit. SemanticGallery keeps waiting as long as new startup log lines keep arriving. It fails only when no new startup log output appears for this many seconds. Set a larger integer if your machine can pause for long stretches during startup. |
+| `STARTUP_TIMEOUT_SECONDS` | Default: `300`. This is an idle timeout, not a total startup limit. SemanticGallery keeps waiting while new startup log lines keep arriving. It fails only when no new startup log output appears for this many seconds. Set a larger integer if your machine can pause for long stretches during startup. |
 | `FORCE` | Default: `0`. `0`: synchronize the gallery bank only when the gallery contents or final weights changed; unchanged images are reused, new or changed images are encoded, and deleted images are removed from the local index. `1`: ignore the cached state, re-encode the entire gallery, and rewrite the search config even when nothing changed. |
 | `ENCODE_BATCH_SIZE` | Default: `8`. Set a larger positive integer to improve throughput at the cost of higher memory use. Set a smaller value to reduce memory use. |
 | `MAX_IMAGE_UPLOAD_BYTES` | Fixed in code at `20 MiB`. The image-search endpoint rejects larger uploads with HTTP `413`. |
@@ -42,7 +42,7 @@ These variables apply when `deploy_best.sh` is run directly.
 | `HOST` | Default: `127.0.0.1`. `127.0.0.1`: bind only the local machine. `0.0.0.0`: bind every interface and expose the app to the local network. Any other address: bind only that specific interface. |
 | `PORT` | Default: `36168`. Set any unused TCP port to change the web URL and the runtime log and PID filenames. |
 | `MODEL_PRECISION` | Default: `bfloat16`. `bfloat16`: normal fast path for gallery encoding and query encoding. `float32`: slower and uses more memory, but is the conservative full-precision option. |
-| `MODEL_WEIGHTS_FILE_PATH` | Default: `logs/semanticgallery_private_data_adapted/<gallery-key>/weights.safetensors`. Deployment model file path. SemanticGallery checks this path first. If a local file exists there, it uses that file. Otherwise it falls back to the published Stage 1 checkpoint and uses that. |
+| `MODEL_WEIGHTS_FILE_PATH` | Default: `logs/semanticgallery_private_data_adapted/<gallery-key>/weights.safetensors`. Deployment model file path. SemanticGallery checks this path first. If a local file exists there, it uses that file. Otherwise it falls back to the published Stage 1 checkpoint. |
 | `FORCE` | Default: `0`. `0`: synchronize the gallery bank only when the gallery contents or final weights changed; unchanged images are reused, new or changed images are encoded, and deleted images are removed from the local index. `1`: ignore the cached state and rerun full gallery encoding. |
 | `ENCODE_BATCH_SIZE` | Default: `8`. Set a larger positive integer to improve throughput at the cost of higher memory use. Set a smaller value to reduce memory use. |
 
@@ -50,7 +50,7 @@ These variables apply when `deploy_best.sh` is run directly.
 
 | Variable | Details |
 | --- | --- |
-| `PRIVATE_GALLERY_DIR` | Required unless the local JSONL files already exist. Set an absolute path to the user's gallery to build `full_manifest.jsonl`, `private_adapt_data.jsonl`, and `private_adapt_data_state.json` under `datasets/private_gallery_local/<gallery-key>/`. `prepare_data.sh` always refreshes `full_manifest.jsonl`. It reuses `private_adapt_data.jsonl` until at least `10%` of its tracked files are missing from the current gallery, but it still refreshes `private_adapt_data_state.json` so Stage 2 can detect in-place edits to tracked local images. |
+| `PRIVATE_GALLERY_DIR` | Required unless the local JSONL files already exist. Set an absolute path to the user's gallery to build `full_manifest.jsonl`, `private_adapt_data.jsonl`, and `private_adapt_data_state.json` under `datasets/private_gallery_local/<gallery-key>/`. `prepare_data.sh` always refreshes `full_manifest.jsonl`. It reuses `private_adapt_data.jsonl` until at least `10%` of its tracked files are missing from the current gallery, but it still refreshes `private_adapt_data_state.json` so Stage 2 can catch in-place edits to tracked local images. |
 | `PREPARE_PUBLIC_DATA` | Default: `0`. `0`: build only the local gallery files used by Stage 2 adaptation. `1`: also download and prepare Flickr30k plus Screen2Words for full Stage 1 retraining. |
 | `FORCE` | Default: `0`. `0`: reuse local public Stage 1 datasets when they already meet the row threshold. `1`: refresh those public datasets even if the local copies already exist. |
 

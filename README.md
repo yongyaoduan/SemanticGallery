@@ -2,11 +2,11 @@
 
 ![SemanticGallery demo](docs/assets/readme/semanticgallery-demo.gif)
 
-SemanticGallery is a local-first semantic image search app for Apple Silicon. Point it at a folder of images, let it build a local index, and search that folder from a browser.
+SemanticGallery is a local-first semantic image search app for Apple Silicon. You pick a folder of images, the app indexes that folder locally, and you search it from a browser.
 
 - Private images stay on disk. The gallery itself is not uploaded.
 - Semantic search works across photos and screenshots.
-- First run prepares the runtime, adapts to the target gallery, and builds the local index automatically.
+- On the first run, SemanticGallery prepares the runtime. It adapts to the target gallery and builds the local index for you.
 - The web UI supports text search, image search, similar-image search, preview, metadata inspection, batch selection, and permanent delete.
 - The runtime is built on MLX for Apple Silicon.
 
@@ -22,17 +22,19 @@ SemanticGallery is a local-first semantic image search app for Apple Silicon. Po
 GALLERY_DIR=/absolute/path/to/gallery ./scripts/quickstart.sh
 ```
 
-On the first run, SemanticGallery:
+On the first run, SemanticGallery does the following:
 
 - creates `.venv/` and installs Python dependencies
 - downloads the MLX SigLIP2 base model cache
 - downloads the published retrieval checkpoint from [Lucas20250626/semanticgallery-mlx-siglip2-stage1](https://huggingface.co/Lucas20250626/semanticgallery-mlx-siglip2-stage1)
 - downloads the small public reference set used to keep local adaptation stable from [Lucas20250626/semanticgallery-stage2-public-anchor](https://huggingface.co/datasets/Lucas20250626/semanticgallery-stage2-public-anchor)
-- scans the target gallery, samples up to `100` local images, runs a short gallery-specific adaptation step, builds the gallery index, and starts the web app
+- scans the target gallery and selects up to `100` local images for adaptation
+- runs a short gallery-specific training step
+- builds the gallery index and starts the web app
 
-Private images do not leave the machine. Network access is only used to download Python packages, the MLX base model, the published retrieval checkpoint, and the small public reference set used during local adaptation.
+Private images do not leave the machine. The app goes online only for four things: Python packages, the MLX base model, the published retrieval checkpoint, and the small public reference set that local adaptation uses.
 
-Success looks like this:
+When startup succeeds, you should see:
 
 - Default URL: `http://127.0.0.1:36168`
 - Ready marker: `SemanticGallery is ready at http://127.0.0.1:36168`
@@ -43,11 +45,11 @@ Success looks like this:
 
 If startup fails, `quickstart.sh` exits with a non-zero status and leaves the full log in `logs/runtime/`.
 
-Later runs rebuild the full local manifest, then apply three reuse checks:
+On later runs, the app rebuilds the full local manifest first and then applies three reuse checks:
 
 - The capped local adaptation set stays fixed unless at least `10%` of its tracked files are missing.
-- Stage 2 reruns only when the published Stage 1 checkpoint, the capped local adaptation set, the tracked local image contents, or the Stage 2 hyperparameters change.
-- The gallery index synchronizes only when the gallery contents or the final weights change. Unchanged images are reused, new or changed images are encoded when their path, file size, or `mtime_ns` changed, and deleted images are removed from the local index.
+- Stage 2 reruns only when one of these inputs changes: the published Stage 1 checkpoint, the capped local adaptation set, the tracked local image contents, or the Stage 2 hyperparameters.
+- The gallery index synchronizes only when the gallery contents or the final weights change. Unchanged images stay in place. New or changed images are encoded when their path, file size, or `mtime_ns` changed. Deleted images are removed from the local index.
 
 Deletes from the web UI update the local index immediately. Use `FORCE=1` only when you want to force a manual gallery re-encode:
 
@@ -63,19 +65,19 @@ FORCE=1 GALLERY_DIR=/absolute/path/to/gallery ./scripts/quickstart.sh
 - `.cache/semanticgallery/stage2_public_anchor/`: downloaded Stage 2 public reference set
 - `datasets/private_gallery_local/<gallery-key>/full_manifest.jsonl`: full local manifest with absolute paths and weak labels
 - `datasets/private_gallery_local/<gallery-key>/private_adapt_data.jsonl`: capped local adaptation subset
-- `datasets/private_gallery_local/<gallery-key>/private_adapt_data_state.json`: tracked local adaptation rows, missing-count state, and the content signature used for Stage 2 reuse
+- `datasets/private_gallery_local/<gallery-key>/private_adapt_data_state.json`: tracked local adaptation rows, missing-count state, and the content signature that Stage 2 reuse checks
 - `logs/runtime/`: startup log and PID file for the running web service
-- `logs/semanticgallery_private_data_adapted/<gallery-key>/`: local adaptation weights, training history, training summary, and `quickstart_state.json`
+- `logs/semanticgallery_private_data_adapted/<gallery-key>/`: local adaptation weights, a training history, a training summary, and `quickstart_state.json`
 - `deployment/search_configs/<gallery-key>.json`: runtime search configuration
 - `deployment/<gallery-key>_mlx_siglip2_embeddings.npy`, `deployment/<gallery-key>_mlx_siglip2.paths.txt`, `deployment/<gallery-key>_mlx_siglip2_skipped.json`, `deployment/<gallery-key>_mlx_siglip2_file_state.json`, `deployment/<gallery-key>_mlx_siglip2_bank_state.json`: generated search index and cache-state files for the selected gallery
 - `deployment/.thumb_cache/`: cached JPEG thumbnails for the web UI
 - `deployment/.delete_staging/`: temporary files used while delete rewrites the local index
 
-`<gallery-key>` is a stable key derived from the absolute gallery path. It keeps multiple galleries from overwriting each other's manifests, adapted weights, caches, and search configs.
+`<gallery-key>` is a stable key derived from the absolute gallery path. It keeps one gallery from overwriting another gallery's manifests, adapted weights, caches, or search configs.
 
 ## Delete Behavior
 
-Deleting an image from the web UI permanently removes the file from the target gallery and refreshes the local search index. The app uses a temporary staging directory while it rewrites the index, but it is not a recycle bin or restore feature.
+Deleting an image from the web UI permanently removes the file from the target gallery and refreshes the local search index. The app uses a temporary staging directory while it rewrites the index, but nothing there acts as a recycle bin or a restore path.
 
 ## Advanced Topics
 

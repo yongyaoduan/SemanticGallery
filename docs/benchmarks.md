@@ -1,10 +1,10 @@
 # Benchmarks
 
-This page records the selection result that led to the shipped MLX runtime on Apple Silicon. The benchmark harness and raw local artifacts are kept outside the Git repo; end users do not need them to run SemanticGallery.
+This page records the selection result behind the shipped MLX runtime on Apple Silicon. The benchmark harness and raw local artifacts live outside the Git repo, and end users do not need them to run SemanticGallery.
 
 ## MPS vs MLX
 
-`MPS` is PyTorch running on Apple's Metal backend. `MLX` is Apple's native array runtime for Apple Silicon. In this repo, the practical selection question is steady-state latency and low-precision stability on Apple hardware.
+`MPS` is PyTorch running on Apple's Metal backend. `MLX` is Apple's native array runtime for Apple Silicon. For this repo, the real choice came down to steady-state latency and low-precision stability on Apple hardware.
 
 ## Benchmark Setup
 
@@ -42,13 +42,13 @@ This page records the selection result that led to the shipped MLX runtime on Ap
 - Deployment: `MLX bfloat16` reduces mean query time from `12.64 ms` to `9.02 ms` relative to `PyTorch + MPS float32`, also a `28.6%` latency reduction
 - Deployment: `MLX bfloat16` is `54.7%` faster than `PyTorch + MPS float16` on the same gallery bank
 
-The shipped runtime is pure MLX because it gives the best low-precision performance on Apple Silicon while keeping the runtime stack simpler.
+The shipped runtime is pure MLX because it gives the best low-precision performance on Apple Silicon and keeps the runtime stack simpler.
 
 ## Training Path Selection
 
 `Base` is the released `google/siglip2-base-patch16-224` checkpoint with no repo-specific tuning. `Stage 1` fine-tunes that checkpoint on Flickr30k plus Screen2Words. `Stage 2 only` starts from the base checkpoint and runs only gallery-specific adaptation. `Stage 1 -> Stage 2` starts from the published Stage 1 checkpoint and then runs gallery-specific adaptation.
 
-These numbers are reference selection results recorded during development. They document why the repo ships `Stage 1 -> Stage 2`; they are not reproduced by an in-repo benchmark command, and the in-repo full retraining path should not be read as a strict reproduction of these tables.
+These numbers are reference selection results recorded during development. They explain why the repo ships `Stage 1 -> Stage 2`. The repo does not include a benchmark command that reproduces them, and the in-repo full retraining path should not be read as a strict reproduction of these tables.
 
 ### Reference Setup
 
@@ -93,7 +93,7 @@ The shipped Stage 2 loss keeps three terms active:
 
 `L = 1.0 * L_public_txtimg + w_instance * L_private_instance + w_distill * L_distill`
 
-The selection question is how much gallery-specific pull to add without drifting too far from the published Stage 1 checkpoint. The reference sweep below used the same Stage 1 checkpoint, the same `1000`-row public reference set, the same capped local adaptation set, the same seed, and one Stage 2 epoch.
+The selection question was how much gallery-specific pull to add without drifting too far from the published Stage 1 checkpoint. The reference sweep below used the same Stage 1 checkpoint, the same `1000`-row public reference set, the same capped local adaptation set, the same seed, and one Stage 2 epoch.
 
 ### Reference Setup
 
@@ -118,6 +118,6 @@ The selection question is how much gallery-specific pull to add without drifting
 
 ### Analysis
 
-- All three settings land in a narrow band, so Stage 2 is not highly sensitive to small weight changes in this range
+- All three settings land in a narrow band, so Stage 2 is not very sensitive to small weight changes in this range
 - `0.30 / 0.15` produced the lowest validation loss in the reference sweep
 - The shipped Stage 2 defaults use `w_instance=0.30` and `w_distill=0.15`

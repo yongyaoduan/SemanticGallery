@@ -1,6 +1,6 @@
 # Data Preparation
 
-SemanticGallery has two data-preparation paths:
+SemanticGallery uses two data-preparation paths:
 
 - the default path used by `quickstart.sh` for gallery-specific adaptation
 - the full retraining path used only when reproducing or replacing the published Stage 1 checkpoint
@@ -25,7 +25,7 @@ This command scans the user gallery and writes:
 - if `10%` or more are missing, it resamples the capped set from the current gallery
 - it does not silently fill missing rows with new images below that threshold
 
-`private_adapt_data_state.json` stores the tracked rows, the current missing-row count, and a content signature for the existing tracked files. Quick start uses that content signature to rerun Stage 2 when a tracked local image changes in place even if `private_adapt_data.jsonl` itself is reused unchanged.
+`private_adapt_data_state.json` stores the tracked rows, the current missing-row count, and a content signature for the existing tracked files. Quick start uses that signature to decide when Stage 2 needs to run again. A tracked local image can change in place even when `private_adapt_data.jsonl` itself is still being reused.
 
 ### Schema
 
@@ -38,7 +38,7 @@ Each JSONL row uses the same schema:
 | `split` | Deterministic `train` or `val` assignment |
 | `source` | Source label written into the manifest |
 
-The default Stage 2 loss does not optimize on private captions. The private rows keep the shared JSONL schema so the same loaders can parse both public and local manifests, but the gallery-specific loss reads image paths and image augmentations, not private text labels. Those weak captions still matter at runtime because the search engine uses them in a caption-based ranking heuristic.
+The default Stage 2 loss does not optimize on private captions. The private rows still use the shared JSONL schema, so the same loaders can parse both public and local manifests. The gallery-specific loss reads image paths and image augmentations, not private text labels. Those weak captions still matter at runtime because the search engine uses them in a caption-based ranking heuristic.
 
 ### Caption Rules
 
@@ -65,7 +65,7 @@ The default path does not download the full public corpus again. It reuses a pub
 - `500` Flickr30k rows
 - `500` Screen2Words rows
 
-The default Stage 2 path uses that small public reference set to keep a public text-image signal active without asking every user to download the full public corpus again.
+The default Stage 2 path uses that small public reference set to keep a public text-image signal active. That keeps the default setup lighter and avoids another full public-corpus download.
 
 ## Full Retraining Preparation
 
@@ -82,4 +82,4 @@ This path prepares the public development corpus used by the in-repo Stage 1 run
 - `datasets/private_gallery_local/<gallery-key>/private_adapt_data.jsonl`
 - `datasets/private_gallery_local/<gallery-key>/private_adapt_data_state.json`
 
-The Flickr30k portion is currently built from the published `lmms-lab/flickr30k` corpus, which only exposes a `test` split. The repo uses that downloaded corpus as a local development source and then makes a deterministic local `80/20` train/val split in code. Use this path only when you want to run a local Stage 1 experiment or replace the published checkpoint for your own workflow. It is not the source of the benchmark tables in `docs/benchmarks.md`.
+The Flickr30k portion is currently built from the published `lmms-lab/flickr30k` corpus, which only exposes a `test` split. The repo uses that downloaded corpus as a local development source, then makes a deterministic local `80/20` train/val split in code. Use this path only when you want to run a local Stage 1 experiment or replace the published checkpoint for your own workflow. The benchmark tables in `docs/benchmarks.md` do not come from this path.

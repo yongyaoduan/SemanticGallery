@@ -1,9 +1,9 @@
 # Training
 
-SemanticGallery has two training paths:
+SemanticGallery uses two training paths:
 
 - the default path used by `quickstart.sh`, which reuses the published Stage 1 checkpoint and adapts it to one gallery
-- the full path, which reruns public Stage 1 training and then still uses Stage 2 for gallery-specific adaptation
+- the full path, which reruns public Stage 1 training and still uses Stage 2 for gallery-specific adaptation
 
 ## Default Path: Gallery-Specific Adaptation
 
@@ -22,7 +22,7 @@ This is the normal path. It writes adapted weights to `logs/semanticgallery_priv
 | Stage 2 public reference set | Keeps public text-image alignment active during Stage 2 |
 | Local adaptation set | Up to `100` images sampled from the target gallery |
 
-The local adaptation set comes from the user's own gallery and typically mixes phone photos and screenshots.
+The local adaptation set comes from the user's own gallery. In practice it usually mixes phone photos and screenshots.
 
 ### What Stage 2 Optimizes
 
@@ -36,7 +36,7 @@ Stage 2 keeps the text tower frozen and combines three losses:
 | `L_private_instance` | Pulls two augmented views of the same local image together |
 | `L_distill` | Keeps the adapted image encoder close to the published Stage 1 teacher |
 
-The shipped weights were selected from a small Stage 2 sweep on the same published Stage 1 checkpoint, the same `1000`-row public reference set, and the same capped local adaptation set. Three candidates were tested with the same seed and one Stage 2 epoch:
+The shipped weights came out of a small Stage 2 sweep that used the same published Stage 1 checkpoint, the same `1000`-row public reference set, and the same capped local adaptation set. Three candidates were tested with the same seed and one Stage 2 epoch:
 
 | `L_private_instance` | `L_distill` | Train loss | Val loss |
 | ---: | ---: | ---: | ---: |
@@ -66,4 +66,4 @@ The reference Stage 1 run took about `42` minutes on an Apple M4 MacBook Air. In
 | Screen2Words val | `2,364` | `4.7%` |
 | Total | `49,890` | `100%` |
 
-In the current repo, the Flickr30k portion is built from the published `lmms-lab/flickr30k` corpus and then split locally with the deterministic `80/20` rule in `mlx_pipeline.py`. Treat this path as a local development training run, not as a strict reproduction of the selection benchmark. The selection notes in [benchmarks.md](benchmarks.md) remain development reference results recorded outside the shipped quickstart path.
+In the current repo, the Flickr30k portion is built from the published `lmms-lab/flickr30k` corpus and then split locally with the deterministic `80/20` rule in `mlx_pipeline.py`. Treat this path as a local development training run, not as a strict reproduction of the selection benchmark. The notes in [benchmarks.md](benchmarks.md) are still development reference results recorded outside the shipped quickstart path.

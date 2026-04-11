@@ -10,6 +10,9 @@ logs/
 .venv-mlx/
 .vscode/
 .worktrees/
+desktop/node_modules/
+desktop/dist/
+desktop/src-tauri/target/
 
 datasets/
 

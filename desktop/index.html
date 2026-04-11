@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SemanticGallery Desktop</title>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="chrome">
+        <div class="brand-block">
+          <p class="eyebrow">SemanticGallery</p>
+          <h1>Local Gallery Search</h1>
+        </div>
+        <div class="chrome-actions">
+          <button id="refresh-button" class="icon-button" type="button" aria-label="Refresh index" title="Refresh index">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M20 11a8 8 0 0 0 -13.657 -5.657" />
+              <path d="M4 4v5h5" />
+              <path d="M4 13a8 8 0 0 0 13.657 5.657" />
+              <path d="M20 20v-5h-5" />
+            </svg>
+          </button>
+          <button id="settings-button" class="icon-button" type="button" aria-label="Open settings" title="Open settings">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M10.325 4.317a1.724 1.724 0 0 1 3.35 0l.173.94a1.724 1.724 0 0 0 2.573 1.066l.826-.472a1.724 1.724 0 0 1 2.286.633l.35.607a1.724 1.724 0 0 1 -.63 2.285l-.826.473a1.724 1.724 0 0 0 0 2.132l.826.473a1.724 1.724 0 0 1 .63 2.285l-.35.607a1.724 1.724 0 0 1 -2.286.633l-.826-.472a1.724 1.724 0 0 0 -2.573 1.066l-.173.94a1.724 1.724 0 0 1 -3.35 0l-.173-.94a1.724 1.724 0 0 0 -2.573 -1.066l-.826.472a1.724 1.724 0 0 1 -2.286 -.633l-.35-.607a1.724 1.724 0 0 1 .63 -2.285l.826-.473a1.724 1.724 0 0 0 0 -2.132l-.826-.473a1.724 1.724 0 0 1 -.63 -2.285l.35-.607a1.724 1.724 0 0 1 2.286 -.633l.826.472a1.724 1.724 0 0 0 2.573 -1.066z" />
+              <path d="M12 9a3 3 0 1 0 0 6a3 3 0 0 0 0 -6z" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <section id="setup-card" class="setup-card" hidden>
+        <div class="setup-copy">
+          <p class="eyebrow">First Launch</p>
+          <h2 id="setup-title">Preparing the desktop runtime</h2>
+          <p id="setup-message">Checking local resources and preparing the model runtime.</p>
+        </div>
+        <div class="progress-cluster">
+          <div class="progress-row">
+            <span>Overall</span>
+            <span id="setup-progress-label">0 / 5</span>
+          </div>
+          <div class="progress-track"><span id="setup-progress-bar"></span></div>
+        </div>
+      </section>
+
+      <main class="workspace">
+        <section class="search-panel">
+          <form id="search-form" class="search-bar" autocomplete="off">
+            <input id="search-input" type="search" placeholder="Search your active folder" aria-label="Search your active folder" />
+            <button type="submit" class="search-submit">Search</button>
+          </form>
+          <div class="status-row">
+            <div>
+              <p class="status-label">Active Folder</p>
+              <p id="active-folder-label" class="status-value">Choose a folder from Settings</p>
+            </div>
+            <div>
+              <p class="status-label">Index</p>
+              <p id="refresh-status-label" class="status-value">Idle</p>
+            </div>
+          </div>
+          <section id="results" class="results"></section>
+        </section>
+
+        <aside id="settings-panel" class="settings-panel" hidden>
+          <div class="settings-header">
+            <div>
+              <p class="eyebrow">Settings</p>
+              <h2>Folder And Adaptation</h2>
+            </div>
+            <button id="settings-close" class="ghost-button" type="button">Close</button>
+          </div>
+          <div class="settings-group">
+            <p class="settings-label">Folder</p>
+            <button id="choose-folder-button" class="primary-button" type="button">Choose Folder</button>
+          </div>
+          <div class="settings-group">
+            <p class="settings-label">Stage 2</p>
+            <p class="settings-help">Manual adaptation only runs for the current folder and requires at least 100 supported images.</p>
+            <button id="run-stage2-button" class="secondary-button" type="button">Run Stage 2</button>
+          </div>
+          <div class="settings-group">
+            <p class="settings-label">Status</p>
+            <p id="last-task-message" class="settings-help">No background task has started yet.</p>
+          </div>
+        </aside>
+      </main>
+    </div>
+
+    <template id="result-card-template">
+      <article class="result-card">
+        <p class="result-name"></p>
+        <p class="result-path"></p>
+      </article>
+    </template>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

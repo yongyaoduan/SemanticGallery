@@ -50,8 +50,8 @@ class IndexStore:
               is_present INTEGER NOT NULL,
               last_scanned_at TEXT DEFAULT CURRENT_TIMESTAMP
             );
-            CREATE INDEX IF NOT EXISTS idx_image_paths_folder_present_content
-              ON image_paths(folder_path, is_present, content_hash, absolute_path);
+            CREATE INDEX IF NOT EXISTS idx_image_paths_folder_present_order_content
+              ON image_paths(folder_path, is_present, absolute_path, content_hash);
             CREATE INDEX IF NOT EXISTS idx_image_embeddings_signature_content
               ON image_embeddings(encoder_signature, content_hash);
             CREATE TABLE IF NOT EXISTS folder_states (

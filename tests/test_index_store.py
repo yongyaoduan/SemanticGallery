@@ -65,10 +65,68 @@ class IndexStoreTests(unittest.TestCase):
             self.assertEqual(
                 indexes,
                 {
-                    "idx_image_paths_folder_present_content",
+                    "idx_image_paths_folder_present_order_content",
                     "idx_image_embeddings_signature_content",
                 },
             )
+
+    def test_get_folder_rows_uses_index_order_without_temp_sort(self):
+        with tempfile.TemporaryDirectory(prefix="sg-index-store-") as tmp_dir:
+            db_path = Path(tmp_dir) / "index.sqlite3"
+            store = IndexStore.connect(db_path)
+            store.migrate()
+
+            with store.transaction():
+                store.upsert_asset(content_hash="abc", byte_size=3)
+                store.upsert_asset(content_hash="def", byte_size=4)
+                store.upsert_embedding(
+                    content_hash="abc",
+                    encoder_signature="stage1",
+                    embedding=np.asarray([0.1, 0.2], dtype=np.float32),
+                )
+                store.upsert_embedding(
+                    content_hash="def",
+                    encoder_signature="stage1",
+                    embedding=np.asarray([0.3, 0.4], dtype=np.float32),
+                )
+                store.upsert_path(
+                    absolute_path="/tmp/b.jpg",
+                    folder_path="/tmp/folder",
+                    content_hash="abc",
+                    byte_size=3,
+                    mtime_ns=10,
+                    is_present=True,
+                )
+                store.upsert_path(
+                    absolute_path="/tmp/a.jpg",
+                    folder_path="/tmp/folder",
+                    content_hash="def",
+                    byte_size=4,
+                    mtime_ns=11,
+                    is_present=True,
+                )
+
+            plan_rows = store.connection.execute(
+                """
+                EXPLAIN QUERY PLAN
+                SELECT image_paths.absolute_path, image_paths.content_hash, image_embeddings.embedding_blob, image_embeddings.embedding_dim
+                FROM image_paths
+                JOIN image_embeddings
+                  ON image_paths.content_hash = image_embeddings.content_hash
+                WHERE image_paths.folder_path = ?
+                  AND image_paths.is_present = 1
+                  AND image_embeddings.encoder_signature = ?
+                ORDER BY image_paths.absolute_path
+                """,
+                ("/tmp/folder", "stage1"),
+            ).fetchall()
+            plan_details = "\n".join(row["detail"] for row in plan_rows)
+
+            self.assertNotIn("TEMP B-TREE", plan_details)
+            self.assertIn("idx_image_paths_folder_present_order_content", plan_details)
+
+            rows = store.get_folder_rows(folder_path="/tmp/folder", encoder_signature="stage1")
+            self.assertEqual([row["absolute_path"] for row in rows], ["/tmp/a.jpg", "/tmp/b.jpg"])
 
     def test_get_folder_rows_returns_present_paths_for_encoder_signature(self):
         with tempfile.TemporaryDirectory(prefix="sg-index-store-") as tmp_dir:

@@ -8,6 +8,7 @@ import numpy as np
 
 from desktop_runtime.folder_sync import reconcile_folder
 from desktop_runtime.index_store import IndexStore
+from desktop_runtime.search_view import ActiveSearchView
 
 
 class FakeEncoder:
@@ -82,6 +83,37 @@ class FolderSyncTests(unittest.TestCase):
             self.assertEqual(rows[keep.resolve().as_posix()]["is_present"], 1)
             self.assertEqual(rows[change.resolve().as_posix()]["is_present"], 1)
             self.assertEqual(rows[remove.resolve().as_posix()]["is_present"], 0)
+
+    def test_reconcile_backfills_missing_embedding_for_unchanged_file(self):
+        with tempfile.TemporaryDirectory(prefix="sg-folder-sync-") as tmp_dir:
+            root = Path(tmp_dir)
+            folder = root / "folder"
+            folder.mkdir()
+            image = folder / "photo.jpg"
+            image.write_bytes(b"stable-content")
+
+            store = IndexStore.connect(root / "index.sqlite3")
+            store.migrate()
+            encoder = FakeEncoder()
+
+            content_hash = "hash-photo"
+            stat = image.stat()
+            store.upsert_asset(content_hash=content_hash, byte_size=stat.st_size)
+            store.upsert_path(
+                absolute_path=image.resolve().as_posix(),
+                folder_path=folder.resolve().as_posix(),
+                content_hash=content_hash,
+                byte_size=stat.st_size,
+                mtime_ns=stat.st_mtime_ns,
+                is_present=True,
+            )
+
+            reconcile_folder(store, folder, "stage1", encoder)
+
+            self.assertEqual(encoder.calls, ["photo.jpg"])
+            self.assertEqual(store.count_embeddings(), 1)
+            view = ActiveSearchView.from_store(store, folder.resolve().as_posix(), "stage1")
+            self.assertEqual(view.search(np.asarray([1.0, 0.0, 0.0], dtype=np.float32), limit=1), [image.resolve().as_posix()])
 
 
 if __name__ == "__main__":

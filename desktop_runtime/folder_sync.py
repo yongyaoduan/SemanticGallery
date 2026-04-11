@@ -71,6 +71,8 @@ def reconcile_folder(store, folder_path: Path, encoder_signature: str, encoder) 
 
         if unchanged:
             content_hash = existing_row["content_hash"]
+            if store.get_embedding_row(content_hash, encoder_signature) is None:
+                store.upsert_embedding(content_hash, encoder_signature, encoder.encode_image(path))
         else:
             content_hash = sha256_file(path)
             store.upsert_asset(content_hash=content_hash, byte_size=stat.st_size)

@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
+
+
+BUNDLED_RESOURCES_DIR_ENV_VAR = "SEMANTICGALLERY_BUNDLED_RESOURCES_DIR"
 
 
 @dataclass(frozen=True)
@@ -18,6 +22,13 @@ class AppPaths:
     bundled_resources_dir: Path
 
 
+def resolve_bundled_resources_dir() -> Path:
+    override = os.environ.get(BUNDLED_RESOURCES_DIR_ENV_VAR)
+    if override:
+        return Path(override).expanduser()
+    return Path(__file__).resolve().parent / "resources"
+
+
 def build_app_paths(home_dir: Path, app_name: str = "SemanticGallery") -> AppPaths:
     support_dir = home_dir.expanduser().resolve() / "Library" / "Application Support" / app_name
     return AppPaths(
@@ -30,7 +41,7 @@ def build_app_paths(home_dir: Path, app_name: str = "SemanticGallery") -> AppPat
         thumbnails_dir=support_dir / "thumbs",
         index_db_path=support_dir / "index.sqlite3",
         config_dir=support_dir / "config",
-        bundled_resources_dir=support_dir / "resources",
+        bundled_resources_dir=resolve_bundled_resources_dir(),
     )
 
 

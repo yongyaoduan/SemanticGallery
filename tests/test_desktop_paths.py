@@ -1,23 +1,41 @@
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from desktop_runtime.paths import AppPaths, build_app_paths, resolve_uv_binary
+from desktop_runtime.paths import AppPaths, BUNDLED_RESOURCES_DIR_ENV_VAR, build_app_paths, resolve_uv_binary
 from desktop_runtime.progress import ProgressEvent
 
 
 class DesktopPathsTests(unittest.TestCase):
     def test_build_app_paths_uses_application_support_layout(self):
         home = Path("/Users/tester")
-        paths = build_app_paths(home_dir=home, app_name="SemanticGallery")
+        expected_bundled = Path(__file__).resolve().parent.parent / "desktop_runtime" / "resources"
+        with patch.dict(os.environ, {}, clear=True):
+            paths = build_app_paths(home_dir=home, app_name="SemanticGallery")
 
+        self.assertEqual(paths.app_name, "SemanticGallery")
         self.assertEqual(paths.support_dir, home / "Library" / "Application Support" / "SemanticGallery")
         self.assertEqual(paths.runtime_dir, paths.support_dir / "runtime")
+        self.assertEqual(paths.cache_dir, paths.support_dir / "cache")
         self.assertEqual(paths.index_db_path, paths.support_dir / "index.sqlite3")
         self.assertEqual(paths.logs_dir, paths.support_dir / "logs")
         self.assertEqual(paths.stage2_dir, paths.support_dir / "stage2")
+        self.assertEqual(paths.thumbnails_dir, paths.support_dir / "thumbs")
+        self.assertEqual(paths.config_dir, paths.support_dir / "config")
+        self.assertEqual(paths.bundled_resources_dir, expected_bundled)
+
+    def test_build_app_paths_honors_bundled_resources_env_override(self):
+        home = Path("/Users/tester")
+        override = Path("/tmp/semanticgallery-resources")
+
+        with patch.dict(os.environ, {BUNDLED_RESOURCES_DIR_ENV_VAR: override.as_posix()}, clear=False):
+            paths = build_app_paths(home_dir=home)
+
+        self.assertEqual(paths.bundled_resources_dir, override)
 
     def test_resolve_uv_binary_prefers_env_override_then_bundled_resource(self):
         with tempfile.TemporaryDirectory(prefix="sg-paths-") as tmp_dir:

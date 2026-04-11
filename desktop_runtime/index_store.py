@@ -16,7 +16,7 @@ class IndexStore:
     @classmethod
     def connect(cls, db_path: Path) -> "IndexStore":
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        return cls(sqlite3.connect(db_path))
+        return cls(sqlite3.connect(db_path, check_same_thread=False))
 
     @contextmanager
     def transaction(self) -> Iterator[sqlite3.Connection]:

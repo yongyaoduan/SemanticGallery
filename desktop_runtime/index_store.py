@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
 
 import numpy as np
 
@@ -15,6 +17,11 @@ class IndexStore:
     def connect(cls, db_path: Path) -> "IndexStore":
         db_path.parent.mkdir(parents=True, exist_ok=True)
         return cls(sqlite3.connect(db_path))
+
+    @contextmanager
+    def transaction(self) -> Iterator[sqlite3.Connection]:
+        with self.connection:
+            yield self.connection
 
     def migrate(self) -> None:
         self.connection.executescript(
@@ -67,10 +74,11 @@ class IndexStore:
             """,
             (content_hash, byte_size),
         )
-        self.connection.commit()
 
     def upsert_embedding(self, content_hash: str, encoder_signature: str, embedding: np.ndarray) -> None:
-        embedding_array = np.asarray(embedding, dtype=np.float32).reshape(-1)
+        embedding_array = np.asarray(embedding, dtype=np.float32)
+        if embedding_array.ndim != 1:
+            raise ValueError("embedding must be a 1-D vector")
         self.connection.execute(
             """
             INSERT INTO image_embeddings (content_hash, encoder_signature, embedding_blob, embedding_dim)
@@ -79,9 +87,8 @@ class IndexStore:
               embedding_blob = excluded.embedding_blob,
               embedding_dim = excluded.embedding_dim
             """,
-            (content_hash, encoder_signature, embedding_array.tobytes(), int(embedding_array.size)),
+            (content_hash, encoder_signature, embedding_array.tobytes(), int(embedding_array.shape[0])),
         )
-        self.connection.commit()
 
     def upsert_path(
         self,
@@ -106,7 +113,6 @@ class IndexStore:
             """,
             (absolute_path, folder_path, content_hash, byte_size, mtime_ns, int(is_present)),
         )
-        self.connection.commit()
 
     def get_folder_rows(self, folder_path: str, encoder_signature: str):
         return self.connection.execute(
@@ -122,6 +128,11 @@ class IndexStore:
             """,
             (folder_path, encoder_signature),
         ).fetchall()
+
+    @staticmethod
+    def decode_embedding_blob(embedding_blob: bytes, embedding_dim: int) -> np.ndarray:
+        embedding = np.frombuffer(embedding_blob, dtype=np.float32, count=embedding_dim)
+        return embedding.copy()
 
     def count_assets(self) -> int:
         return int(self.connection.execute("SELECT COUNT(*) FROM image_assets").fetchone()[0])

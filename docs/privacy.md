@@ -12,7 +12,7 @@
 
 - `datasets/private_gallery_local/<gallery-key>/full_manifest.jsonl` stores absolute image paths and weak labels
 - `datasets/private_gallery_local/<gallery-key>/private_adapt_data.jsonl` stores the capped local adaptation subset
-- `datasets/private_gallery_local/<gallery-key>/private_adapt_data_state.json` stores the tracked local adaptation rows, missing-row counts, and the content signature for Stage 2 reuse
+- `datasets/private_gallery_local/<gallery-key>/private_adapt_data_state.json` stores the tracked local adaptation rows, counts of missing rows, and the content signature for Stage 2 reuse
 - `logs/semanticgallery_private_data_adapted/<gallery-key>/weights.safetensors` stores the latest local Stage 2 weights
 - `logs/semanticgallery_private_data_adapted/<gallery-key>/history.jsonl` stores per-epoch local adaptation history
 - `logs/semanticgallery_private_data_adapted/<gallery-key>/summary.json` stores the latest local adaptation summary

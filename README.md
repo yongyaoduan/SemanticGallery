@@ -65,7 +65,7 @@ FORCE=1 GALLERY_DIR=/absolute/path/to/gallery ./scripts/quickstart.sh
 - `.cache/semanticgallery/stage2_public_anchor/`: downloaded Stage 2 public reference set
 - `datasets/private_gallery_local/<gallery-key>/full_manifest.jsonl`: full local manifest with absolute paths and weak labels
 - `datasets/private_gallery_local/<gallery-key>/private_adapt_data.jsonl`: capped local adaptation subset
-- `datasets/private_gallery_local/<gallery-key>/private_adapt_data_state.json`: tracked local adaptation rows, missing-count state, and the content signature that Stage 2 reuse checks
+- `datasets/private_gallery_local/<gallery-key>/private_adapt_data_state.json`: tracked local adaptation rows, state for missing counts, and the content signature that Stage 2 reuse checks
 - `logs/runtime/`: startup log and PID file for the running web service
 - `logs/semanticgallery_private_data_adapted/<gallery-key>/`: local adaptation weights, a training history, a training summary, and `quickstart_state.json`
 - `deployment/search_configs/<gallery-key>.json`: runtime search configuration

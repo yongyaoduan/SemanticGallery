@@ -133,6 +133,69 @@ class IndexStore:
             (folder_path, encoder_signature),
         ).fetchall()
 
+    def get_known_paths(self, folder_path: str):
+        return self.connection.execute(
+            """
+            SELECT absolute_path, folder_path, content_hash, byte_size, mtime_ns, is_present
+            FROM image_paths
+            WHERE folder_path = ?
+            ORDER BY absolute_path
+            """,
+            (folder_path,),
+        ).fetchall()
+
+    def get_embedding_row(self, content_hash: str, encoder_signature: str):
+        return self.connection.execute(
+            """
+            SELECT content_hash, encoder_signature, embedding_blob, embedding_dim
+            FROM image_embeddings
+            WHERE content_hash = ? AND encoder_signature = ?
+            """,
+            (content_hash, encoder_signature),
+        ).fetchone()
+
+    def mark_path_missing(self, absolute_path: str) -> None:
+        self.connection.execute(
+            """
+            UPDATE image_paths
+            SET is_present = 0,
+                last_scanned_at = CURRENT_TIMESTAMP
+            WHERE absolute_path = ?
+            """,
+            (absolute_path,),
+        )
+
+    def upsert_folder_state(
+        self,
+        folder_path: str,
+        active_encoder_signature: str,
+        file_count: int,
+        total_bytes: int,
+        scan_signature: str,
+    ) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO folder_states (
+              folder_path,
+              active_encoder_signature,
+              file_count,
+              total_bytes,
+              scan_signature,
+              last_scanned_at,
+              last_synced_at
+            )
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            ON CONFLICT(folder_path) DO UPDATE SET
+              active_encoder_signature = excluded.active_encoder_signature,
+              file_count = excluded.file_count,
+              total_bytes = excluded.total_bytes,
+              scan_signature = excluded.scan_signature,
+              last_scanned_at = CURRENT_TIMESTAMP,
+              last_synced_at = CURRENT_TIMESTAMP
+            """,
+            (folder_path, active_encoder_signature, file_count, total_bytes, scan_signature),
+        )
+
     @staticmethod
     def decode_embedding_blob(embedding_blob: bytes, embedding_dim: int) -> np.ndarray:
         embedding = np.frombuffer(embedding_blob, dtype=np.float32, count=embedding_dim)

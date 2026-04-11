@@ -1,0 +1,73 @@
+name: Release Desktop
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "desktop-v*"
+
+jobs:
+  macos-desktop:
+    runs-on: macos-14
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: desktop/package-lock.json
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Run Python tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Run frontend tests
+        working-directory: desktop
+        run: npm test -- --runInBand
+
+      - name: Run Rust tests
+        working-directory: desktop
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Stage bundled uv helper
+        run: |
+          mkdir -p desktop/src-tauri/resources
+          cp "$(which uv)" desktop/src-tauri/resources/uv
+          chmod +x desktop/src-tauri/resources/uv
+
+      - name: Build desktop app bundle
+        working-directory: desktop
+        run: npm run tauri:build -- --bundles app
+
+      - name: Archive app bundle
+        run: |
+          APP_PATH="$(find desktop/src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$APP_PATH"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" SemanticGallery-macos-arm64.app.zip
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: semanticgallery-macos-arm64
+          path: SemanticGallery-macos-arm64.app.zip
+
+      - name: Publish GitHub Release asset
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: SemanticGallery-macos-arm64.app.zip

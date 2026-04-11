@@ -43,6 +43,16 @@ class BrokenEncoder(FakeEncoder):
         raise RuntimeError(f"cannot encode {path.name}")
 
 
+class RecordingEncoderLoader:
+    def __init__(self):
+        self.calls: list[tuple[Path | None, str]] = []
+
+    def __call__(self, folder_path: Path | None, encoder_signature: str) -> FakeEncoder:
+        resolved = folder_path.resolve() if folder_path is not None else None
+        self.calls.append((resolved, encoder_signature))
+        return FakeEncoder()
+
+
 class FakeEventService:
     def runtime_status(self) -> dict[str, object]:
         return {
@@ -58,12 +68,19 @@ class FakeEventService:
 
 
 class DesktopApiTests(unittest.TestCase):
-    def _build_service(self, root: Path, *, stage2_job: FakeStage2Job | None = None) -> DesktopService:
+    def _build_service(
+        self,
+        root: Path,
+        *,
+        stage2_job: FakeStage2Job | None = None,
+        encoder_loader: RecordingEncoderLoader | None = None,
+    ) -> DesktopService:
         store = IndexStore.connect(root / "index.sqlite3")
         store.migrate()
         return DesktopService(
             store=store,
-            encoder=FakeEncoder(),
+            encoder=None if encoder_loader is not None else FakeEncoder(),
+            encoder_loader=encoder_loader,
             stage2_job=stage2_job or FakeStage2Job(),
         )
 
@@ -183,6 +200,38 @@ class DesktopApiTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.json()["activeEncoderSignature"], "stage2-signature")
             self.assertEqual(stage2_job.calls, [folder.resolve()])
+
+    def test_folder_selection_restores_folder_specific_encoder_signature_after_stage2(self):
+        with tempfile.TemporaryDirectory(prefix="sg-desktop-api-") as tmp_dir:
+            root = Path(tmp_dir)
+            first_folder = root / "gallery-one"
+            second_folder = root / "gallery-two"
+            first_folder.mkdir()
+            second_folder.mkdir()
+            for index in range(100):
+                (first_folder / f"cat-{index}.jpg").write_bytes(f"cat-{index}".encode("utf-8"))
+            (second_folder / "dog.jpg").write_bytes(b"dog")
+
+            encoder_loader = RecordingEncoderLoader()
+            service = self._build_service(
+                root,
+                stage2_job=FakeStage2Job(result="stage2-gallery-one"),
+                encoder_loader=encoder_loader,
+            )
+            client = TestClient(build_app(service))
+
+            first_select = client.post("/api/folders/select", json={"folderPath": first_folder.as_posix()})
+            stage2_response = client.post("/api/stage2/run")
+            second_select = client.post("/api/folders/select", json={"folderPath": second_folder.as_posix()})
+            restored_select = client.post("/api/folders/select", json={"folderPath": first_folder.as_posix()})
+
+            self.assertEqual(first_select.status_code, 200)
+            self.assertEqual(stage2_response.status_code, 200)
+            self.assertEqual(second_select.status_code, 200)
+            self.assertEqual(second_select.json()["activeEncoderSignature"], "stage1")
+            self.assertEqual(restored_select.status_code, 200)
+            self.assertEqual(restored_select.json()["activeEncoderSignature"], "stage2-gallery-one")
+            self.assertEqual(encoder_loader.calls[-1], (first_folder.resolve(), "stage2-gallery-one"))
 
     def test_events_endpoint_streams_server_sent_events(self):
         client = TestClient(build_app(FakeEventService()))

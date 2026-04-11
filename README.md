@@ -2,11 +2,12 @@
 
 ![SemanticGallery demo](docs/assets/readme/semanticgallery-demo.gif)
 
-SemanticGallery is a local-first semantic image search app for Apple Silicon. You pick a folder of images, the app indexes that folder locally, and you search it from a browser.
+SemanticGallery is a local-first semantic image search app for Apple Silicon. You pick a folder of images, the app indexes that folder locally, and you search it from a browser or the packaged macOS desktop app.
 
 - Private images stay on disk. The gallery itself is not uploaded.
 - Semantic search works across photos and screenshots.
-- On the first run, SemanticGallery prepares the runtime. It adapts to the target gallery and builds the local index for you.
+- On the first run, SemanticGallery prepares the local runtime and downloads missing model assets with visible progress.
+- The desktop app keeps Stage 2 manual. You choose a folder first, then run Stage 2 from Settings only when you want a folder-specific adaptation.
 - The web UI supports text search, image search, similar-image search, preview, metadata inspection, batch selection, and permanent delete.
 - The runtime is built on MLX for Apple Silicon.
 
@@ -15,6 +16,16 @@ SemanticGallery is a local-first semantic image search app for Apple Silicon. Yo
 - Apple Silicon
 - [`uv`](https://github.com/astral-sh/uv)
 - Supported formats: `.jpg`, `.jpeg`, `.png`, `.bmp`, `.tiff`, `.heic`, `.heif`
+
+## Desktop App
+
+The first GitHub Release publishes a macOS desktop build.
+
+- Install the latest `SemanticGallery-macos-arm64.app.zip` from GitHub Releases.
+- On the first launch, the desktop app creates `~/Library/Application Support/com.semanticgallery.desktop/`, prepares a local Python runtime, and downloads the MLX base model, the published Stage 1 checkpoint, and the small public Stage 2 anchor only when those assets are missing.
+- Open **Settings** and click **Choose Folder** to pick a local album from Finder. The active folder search view is folder-scoped, but the shared SQLite index reuses embeddings by image content hash and stores a separate path row for every observed file.
+- **Run Stage 2** appears in **Settings**. It starts only when you click it, and it refuses to run when the active folder has fewer than `100` supported images.
+- The refresh icon forces an immediate rescan. The desktop app also runs a lightweight folder check every `5` seconds and skips the expensive path when nothing changed.
 
 ## Quick Start
 
@@ -59,6 +70,12 @@ FORCE=1 GALLERY_DIR=/absolute/path/to/gallery ./scripts/quickstart.sh
 
 ## What Gets Written
 
+- `~/Library/Application Support/com.semanticgallery.desktop/index.sqlite3`: the desktop index store. It keeps `image_assets`, `image_embeddings`, `image_paths`, and `folder_states` so the app can reuse embeddings by content hash while still tracking every folder path separately.
+- `~/Library/Application Support/com.semanticgallery.desktop/runtime/`: the desktop runtime workspace copied from the bundled app resources
+- `~/Library/Application Support/com.semanticgallery.desktop/runtime/.venv/`: local Python environment created for the desktop sidecar
+- `~/Library/Application Support/com.semanticgallery.desktop/runtime/.cache/mlx/`: MLX SigLIP2 base model cache used by the desktop app
+- `~/Library/Application Support/com.semanticgallery.desktop/runtime/.cache/semanticgallery/stage1/`: downloaded published Stage 1 checkpoint used by the desktop app
+- `~/Library/Application Support/com.semanticgallery.desktop/runtime/.cache/semanticgallery/stage2_public_anchor/`: downloaded Stage 2 public reference set used by the desktop app
 - `.venv/`: local Python environment created by `uv`
 - `.cache/mlx/`: MLX SigLIP2 base model cache
 - `.cache/semanticgallery/stage1/`: downloaded published Stage 1 checkpoint

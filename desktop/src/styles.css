@@ -128,11 +128,26 @@ input {
 }
 
 .setup-card {
-  display: grid;
-  grid-template-columns: 1.2fr 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 18px;
   padding: 20px 22px;
   border-radius: 24px;
+}
+
+.setup-header,
+.setup-body {
+  display: grid;
+  gap: 18px;
+}
+
+.setup-header {
+  grid-template-columns: 1.2fr 1fr;
+}
+
+.setup-body {
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  align-items: start;
 }
 
 .progress-cluster {
@@ -161,6 +176,73 @@ input {
   width: 0;
   border-radius: inherit;
   background: linear-gradient(90deg, #2e8b78, #79c2a5);
+}
+
+.setup-step-list,
+.setup-log-card {
+  padding: 16px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: rgba(255, 250, 240, 0.7);
+}
+
+.setup-step + .setup-step {
+  margin-top: 12px;
+}
+
+.setup-step-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.setup-step-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(36, 95, 87, 0.08);
+  overflow: hidden;
+}
+
+.setup-step-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #2e8b78, #79c2a5);
+  transition: width 180ms ease;
+}
+
+.setup-step.is-idle .setup-step-track span {
+  background: rgba(113, 100, 83, 0.15);
+}
+
+.setup-step.is-running .setup-step-meta span:last-child {
+  color: var(--accent);
+}
+
+.setup-log-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.setup-log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 220px;
+  overflow: auto;
+}
+
+.setup-log-line,
+.setup-log-empty {
+  margin: 0;
+  font-family: "SFMono-Regular", "JetBrains Mono", "IBM Plex Mono", monospace;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--muted);
 }
 
 .workspace {
@@ -295,10 +377,9 @@ input {
     border-radius: 22px;
   }
 
-  .chrome,
-  .setup-card {
+  .setup-header,
+  .setup-body {
     grid-template-columns: 1fr;
-    align-items: start;
   }
 
   .status-row,

@@ -10,6 +10,10 @@
 
 ## Local Files Written
 
+- `~/Library/Application Support/com.semanticgallery.desktop/index.sqlite3` stores desktop `image_assets`, `image_embeddings`, `image_paths`, and `folder_states` rows. Embeddings are keyed by image content hash, while every observed path still keeps its own row.
+- `~/Library/Application Support/com.semanticgallery.desktop/runtime/.cache/mlx/` stores the MLX SigLIP2 base model cache used by the desktop app
+- `~/Library/Application Support/com.semanticgallery.desktop/runtime/.cache/semanticgallery/stage1/` stores the published Stage 1 checkpoint used by the desktop app
+- `~/Library/Application Support/com.semanticgallery.desktop/runtime/.cache/semanticgallery/stage2_public_anchor/` stores the downloaded public Stage 2 reference set used by the desktop app
 - `datasets/private_gallery_local/<gallery-key>/full_manifest.jsonl` stores absolute image paths and weak labels
 - `datasets/private_gallery_local/<gallery-key>/private_adapt_data.jsonl` stores the capped local adaptation subset
 - `datasets/private_gallery_local/<gallery-key>/private_adapt_data_state.json` stores the tracked local adaptation rows, counts of missing rows, and the content signature for Stage 2 reuse
@@ -34,6 +38,8 @@
 
 ## Reindex Behavior
 
+- In the desktop app, search stays scoped to the current folder even though embeddings are reused globally by content hash.
+- In the desktop app, the refresh icon forces an immediate reconciliation pass and a lightweight background check runs every `5` seconds for the active folder.
 - Deletes from the web UI update the local index immediately.
 - If the Stage 2 adaptation weights change, `quickstart.sh` rebuilds the gallery index automatically before it starts the web app.
 - If gallery files are added, removed, renamed, or modified between runs, `quickstart.sh` synchronizes the gallery index automatically on the next startup. Unchanged images are reused. Only files whose path, size, or `mtime_ns` changed are re-encoded. Deleted images are removed from the local index.

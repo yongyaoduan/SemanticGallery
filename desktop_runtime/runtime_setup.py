@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 from enum import StrEnum
 from pathlib import Path
+from textwrap import dedent
 from typing import Protocol
 
 from desktop_runtime.paths import AppPaths, resolve_uv_binary
@@ -24,6 +25,15 @@ class RuntimeDownloaderProtocol(Protocol):
 
 
 class RuntimeDownloader:
+    @staticmethod
+    def _runtime_python(paths: AppPaths) -> Path:
+        return paths.runtime_dir / ".venv" / "bin" / "python"
+
+    @classmethod
+    def _run_runtime_code(cls, paths: AppPaths, code: str, *args: str) -> None:
+        python_bin = cls._runtime_python(paths)
+        subprocess.run([python_bin.as_posix(), "-c", dedent(code), *args], check=True)
+
     def ensure_python_runtime(self, paths: AppPaths) -> None:
         uv_path = resolve_uv_binary(paths, override=None)
         subprocess.run([uv_path.as_posix(), "python", "install", "3.12"], check=True)
@@ -40,7 +50,7 @@ class RuntimeDownloader:
 
     def ensure_dependencies(self, paths: AppPaths) -> None:
         uv_path = resolve_uv_binary(paths, override=None)
-        python_bin = paths.runtime_dir / ".venv" / "bin" / "python"
+        python_bin = self._runtime_python(paths)
         requirements_path = Path(__file__).resolve().parents[1] / "requirements.txt"
         subprocess.run(
             [
@@ -56,10 +66,79 @@ class RuntimeDownloader:
         )
 
     def ensure_base_model(self, paths: AppPaths) -> None:
-        _ = paths
+        self._run_runtime_code(
+            paths,
+            """
+            import sys
+            from pathlib import Path
+
+            from mlx_embeddings.convert import convert
+
+            runtime_root = Path(sys.argv[1]).resolve()
+            model_dir = runtime_root / ".cache" / "mlx" / "siglip2-base-patch16-224-f32"
+            if not (model_dir / "config.json").is_file():
+                model_dir.parent.mkdir(parents=True, exist_ok=True)
+                convert(
+                    "google/siglip2-base-patch16-224",
+                    mlx_path=model_dir.as_posix(),
+                    dtype="float32",
+                    skip_vision=False,
+                )
+            """,
+            paths.runtime_dir.as_posix(),
+        )
 
     def ensure_public_anchor(self, paths: AppPaths) -> None:
-        _ = paths
+        self._run_runtime_code(
+            paths,
+            """
+            import shutil
+            import sys
+            import tarfile
+            from pathlib import Path
+
+            from huggingface_hub import hf_hub_download
+
+            runtime_root = Path(sys.argv[1]).resolve()
+            cache_dir = runtime_root / ".cache" / "semanticgallery" / "stage2_public_anchor"
+            archive_path = cache_dir / "semanticgallery-stage2-public-anchor.tar.gz"
+            metadata_path = cache_dir / "sample_info.json"
+            extract_root = cache_dir / "extracted"
+            flickr_captions = extract_root / "flickr30k" / "captions.txt"
+            screen2words_manifest = extract_root / "screen2words" / "manifest.jsonl"
+
+            if flickr_captions.is_file() and screen2words_manifest.is_file():
+                raise SystemExit(0)
+
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            for filename in ("semanticgallery-stage2-public-anchor.tar.gz", "sample_info.json"):
+                hf_hub_download(
+                    repo_id="Lucas20250626/semanticgallery-stage2-public-anchor",
+                    repo_type="dataset",
+                    revision="main",
+                    filename=filename,
+                    local_dir=cache_dir.as_posix(),
+                )
+
+            tmp_root = cache_dir / "extracting"
+            if tmp_root.exists():
+                shutil.rmtree(tmp_root)
+            tmp_root.mkdir(parents=True, exist_ok=True)
+            with tarfile.open(archive_path, "r:gz") as tar:
+                try:
+                    tar.extractall(tmp_root, filter="data")
+                except TypeError:
+                    tar.extractall(tmp_root)
+
+            if extract_root.exists():
+                shutil.rmtree(extract_root)
+            tmp_root.rename(extract_root)
+
+            if metadata_path.exists():
+                shutil.copy2(metadata_path, extract_root / "sample_info.json")
+            """,
+            paths.runtime_dir.as_posix(),
+        )
 
 
 class RuntimeSetup:

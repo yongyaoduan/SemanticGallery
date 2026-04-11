@@ -154,6 +154,16 @@ class IndexStore:
             (content_hash, encoder_signature),
         ).fetchone()
 
+    def get_folder_state(self, folder_path: str):
+        return self.connection.execute(
+            """
+            SELECT folder_path, active_encoder_signature, file_count, total_bytes, scan_signature
+            FROM folder_states
+            WHERE folder_path = ?
+            """,
+            (folder_path,),
+        ).fetchone()
+
     def mark_path_missing(self, absolute_path: str) -> None:
         self.connection.execute(
             """

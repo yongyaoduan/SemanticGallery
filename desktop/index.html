@@ -31,17 +31,29 @@
       </header>
 
       <section id="setup-card" class="setup-card" hidden>
-        <div class="setup-copy">
-          <p class="eyebrow">First Launch</p>
-          <h2 id="setup-title">Preparing the desktop runtime</h2>
-          <p id="setup-message">Checking local resources and preparing the model runtime.</p>
-        </div>
-        <div class="progress-cluster">
-          <div class="progress-row">
-            <span>Overall</span>
-            <span id="setup-progress-label">0 / 5</span>
+        <div class="setup-header">
+          <div class="setup-copy">
+            <p class="eyebrow">First Launch</p>
+            <h2 id="setup-title">Preparing the desktop runtime</h2>
+            <p id="setup-message">Checking local resources and preparing the model runtime.</p>
           </div>
-          <div class="progress-track"><span id="setup-progress-bar"></span></div>
+          <div class="progress-cluster">
+            <div class="progress-row">
+              <span>Overall</span>
+              <span id="setup-progress-label">0 / 5</span>
+            </div>
+            <div class="progress-track"><span id="setup-progress-bar"></span></div>
+          </div>
+        </div>
+        <div class="setup-body">
+          <div id="setup-step-list" class="setup-step-list"></div>
+          <div class="setup-log-card">
+            <div class="progress-row">
+              <span>Recent Log</span>
+              <span id="setup-log-count">0 lines</span>
+            </div>
+            <div id="setup-log-list" class="setup-log-list"></div>
+          </div>
         </div>
       </section>
 

@@ -10,6 +10,16 @@ This page lists the user-facing environment variables exposed by the shell entry
 
 `<gallery-key>` below means the stable key derived from the absolute gallery path. Quick start uses it so manifests, adapted weights, search configs, and gallery-bank files stay isolated per gallery.
 
+## Desktop App
+
+The packaged macOS app does not require shell variables for the normal flow.
+
+- On first launch, the desktop shell prepares a local runtime under `~/Library/Application Support/com.semanticgallery.desktop/` and downloads the MLX base model, the published Stage 1 checkpoint, and the small public Stage 2 anchor only when those assets are missing.
+- Use **Settings** -> **Choose Folder** to pick the active local album. Finder opens a native folder picker.
+- Use **Settings** -> **Run Stage 2** only when you want a folder-specific adaptation. The desktop app requires at least `100` supported images before it will start Stage 2.
+- The toolbar refresh icon forces an immediate reconciliation pass. The desktop app also performs a lightweight background check every `5` seconds and skips the heavier sync when the folder signature is unchanged.
+- The desktop index lives in `~/Library/Application Support/com.semanticgallery.desktop/index.sqlite3`. It stores content-hash keyed embeddings, per-path rows, and per-folder active encoder state.
+
 ## Quick Start
 
 | Variable | Details |

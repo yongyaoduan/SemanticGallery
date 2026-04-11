@@ -25,6 +25,10 @@ class EncoderProtocol(Protocol):
     def encode_text(self, query_text: str) -> np.ndarray: ...
 
 
+class EncoderLoaderProtocol(Protocol):
+    def __call__(self, folder_path: Path | None, encoder_signature: str) -> EncoderProtocol: ...
+
+
 class Stage2JobProtocol(Protocol):
     def run(self, folder_path: Path) -> str: ...
 
@@ -40,6 +44,7 @@ class FolderScanState:
 class DesktopService:
     store: Any | None = None
     encoder: EncoderProtocol | None = None
+    encoder_loader: EncoderLoaderProtocol | None = None
     stage2_job: Stage2JobProtocol | None = None
     setup_status: str = "idle"
     active_folder: Path | None = None
@@ -49,6 +54,7 @@ class DesktopService:
     _event_queue: asyncio.Queue[dict[str, object]] = field(default_factory=asyncio.Queue, init=False)
     _watch_task: asyncio.Task[None] | None = field(default=None, init=False)
     _active_scan_signature: str = field(default="", init=False)
+    _loaded_encoder_key: tuple[str | None, str] | None = field(default=None, init=False)
     _lock: RLock = field(default_factory=RLock, init=False, repr=False)
     _active_search_view: ActiveSearchView = field(
         default_factory=lambda: ActiveSearchView(paths=[], matrix=np.zeros((0, 0), dtype=np.float32)),
@@ -74,21 +80,28 @@ class DesktopService:
             previous_folder = self.active_folder
             previous_signature = self.active_encoder_signature
             previous_scan_signature = self._active_scan_signature
+            previous_encoder = self.encoder
+            previous_encoder_key = self._loaded_encoder_key
             previous_view = self._active_search_view
 
             self.active_folder = resolved
+            self.active_encoder_signature = self._resolve_folder_signature(resolved)
             try:
                 return self.refresh_active_folder(lightweight=False)
             except Stage2Error:
                 self.active_folder = previous_folder
                 self.active_encoder_signature = previous_signature
                 self._active_scan_signature = previous_scan_signature
+                self.encoder = previous_encoder
+                self._loaded_encoder_key = previous_encoder_key
                 self._active_search_view = previous_view
                 raise
             except DesktopServiceError as exc:
                 self.active_folder = previous_folder
                 self.active_encoder_signature = previous_signature
                 self._active_scan_signature = previous_scan_signature
+                self.encoder = previous_encoder
+                self._loaded_encoder_key = previous_encoder_key
                 self._active_search_view = previous_view
                 self.last_task_message = str(exc)
                 raise DesktopServiceError(f"Failed to index the selected folder: {exc}") from exc
@@ -96,6 +109,8 @@ class DesktopService:
                 self.active_folder = previous_folder
                 self.active_encoder_signature = previous_signature
                 self._active_scan_signature = previous_scan_signature
+                self.encoder = previous_encoder
+                self._loaded_encoder_key = previous_encoder_key
                 self._active_search_view = previous_view
                 self.last_task_message = str(exc)
                 raise DesktopServiceError(f"Failed to index the selected folder: {exc}") from exc
@@ -110,7 +125,8 @@ class DesktopService:
 
             self._require_indexing_components()
             try:
-                reconcile_folder(self.store, folder, self.active_encoder_signature, self.encoder)
+                encoder = self._load_encoder(folder, self.active_encoder_signature)
+                reconcile_folder(self.store, folder, self.active_encoder_signature, encoder)
                 next_view = ActiveSearchView.from_store(self.store, folder.as_posix(), self.active_encoder_signature)
             except (DesktopServiceError, Stage2Error):
                 raise
@@ -137,16 +153,26 @@ class DesktopService:
             if self.stage2_job is None:
                 raise DesktopServiceError("Stage 2 adaptation is not available.")
             self._require_indexing_components()
+            previous_encoder = self.encoder
+            previous_encoder_key = self._loaded_encoder_key
 
             try:
                 next_signature = self.stage2_job.run(folder)
-                reconcile_folder(self.store, folder, next_signature, self.encoder)
+                next_encoder = self._load_encoder(folder, next_signature)
+                reconcile_folder(self.store, folder, next_signature, next_encoder)
                 next_view = ActiveSearchView.from_store(self.store, folder.as_posix(), next_signature)
             except (DesktopServiceError, Stage2Error):
+                self.encoder = previous_encoder
+                self._loaded_encoder_key = previous_encoder_key
                 raise
             except Exception as exc:
+                self.encoder = previous_encoder
+                self._loaded_encoder_key = previous_encoder_key
                 self.last_task_message = str(exc)
                 raise DesktopServiceError(f"Failed to finish Stage 2 adaptation: {exc}") from exc
+            else:
+                self.encoder = next_encoder
+                self._loaded_encoder_key = self._encoder_cache_key(folder, next_signature)
 
             self.active_encoder_signature = next_signature
             self._active_search_view = next_view
@@ -167,10 +193,12 @@ class DesktopService:
             text = query_text.strip()
             if not is_searchable_query(text) or limit <= 0 or not self._active_search_view.paths:
                 return {"query": text, "results": []}
-            if self.encoder is None:
-                raise DesktopServiceError("The search encoder is not available.")
-
-            query_vector = self.encoder.encode_text(text)
+            folder = self._require_active_folder()
+            encoder = self._load_encoder(folder, self.active_encoder_signature)
+            try:
+                query_vector = encoder.encode_text(text)
+            except Exception as exc:
+                raise DesktopServiceError(f"Failed to encode the search query: {exc}") from exc
             matches = self._active_search_view.search(query_vector, limit)
             return {"query": text, "results": [self._result_payload(path) for path in matches]}
 
@@ -220,8 +248,43 @@ class DesktopService:
     def _require_indexing_components(self) -> None:
         if self.store is None:
             raise DesktopServiceError("The local index store is not available.")
-        if self.encoder is None:
+        if self.encoder is None and self.encoder_loader is None:
             raise DesktopServiceError("The local search encoder is not available.")
+
+    def _resolve_folder_signature(self, folder_path: Path) -> str:
+        if self.store is None:
+            return "stage1"
+        row = self.store.get_folder_state(folder_path.as_posix())
+        if row is None:
+            return "stage1"
+        return str(row["active_encoder_signature"])
+
+    def _load_encoder(self, folder_path: Path | None, encoder_signature: str) -> EncoderProtocol:
+        if self.encoder_loader is None:
+            if self.encoder is None:
+                raise DesktopServiceError("The local search encoder is not available.")
+            return self.encoder
+
+        cache_key = self._encoder_cache_key(folder_path, encoder_signature)
+        if self.encoder is not None and self._loaded_encoder_key == cache_key:
+            return self.encoder
+
+        try:
+            next_encoder = self.encoder_loader(folder_path, encoder_signature)
+        except Exception as exc:
+            raise DesktopServiceError(f"Failed to load the local search encoder: {exc}") from exc
+
+        self.encoder = next_encoder
+        self._loaded_encoder_key = cache_key
+        return next_encoder
+
+    @staticmethod
+    def _encoder_cache_key(folder_path: Path | None, encoder_signature: str) -> tuple[str | None, str]:
+        if encoder_signature == "stage1":
+            return (None, encoder_signature)
+        if folder_path is None:
+            return (None, encoder_signature)
+        return (folder_path.expanduser().resolve().as_posix(), encoder_signature)
 
     def _resolve_active_file(self, image_path: str) -> Path:
         folder = self._require_active_folder()

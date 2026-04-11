@@ -1,10 +1,51 @@
+const SETUP_STEP_LABELS = {
+  "check-runtime": "Python runtime",
+  "prepare-dependencies": "Dependencies",
+  "prepare-base-model": "Base model",
+  "prepare-public-anchor": "Public anchor",
+  "finish-setup": "Finalize"
+};
+
+function createSetupSteps() {
+  return Object.entries(SETUP_STEP_LABELS).map(([task, label]) => ({
+    task,
+    label,
+    status: "idle"
+  }));
+}
+
+function updateSetupSteps(steps, payload) {
+  return steps.map((step) => {
+    if (step.task !== payload.task) {
+      return step;
+    }
+
+    if (payload.phase === "finish") {
+      return { ...step, status: "done" };
+    }
+
+    return { ...step, status: "running" };
+  });
+}
+
+function appendSetupLog(logs, payload) {
+  const line = typeof payload === "string" ? payload : payload?.line;
+  if (!line) {
+    return logs;
+  }
+  const nextLogs = [...logs, line];
+  return nextLogs.slice(-10);
+}
+
 export function createInitialState() {
   return {
     setup: {
       currentStep: 0,
       totalSteps: 5,
       status: "idle",
-      message: "Checking local resources and preparing the model runtime."
+      message: "Checking local resources and preparing the model runtime.",
+      steps: createSetupSteps(),
+      logs: []
     },
     refresh: {
       isRunning: false,
@@ -24,8 +65,21 @@ export function reduceAction(state, action) {
       ...state,
       setup: {
         ...state.setup,
-        ...action.payload,
-        status: "running"
+        currentStep: action.payload.current ?? action.payload.currentStep ?? state.setup.currentStep,
+        totalSteps: action.payload.total ?? action.payload.totalSteps ?? state.setup.totalSteps,
+        message: action.payload.message ?? state.setup.message,
+        status: "running",
+        steps: action.payload.task ? updateSetupSteps(state.setup.steps, action.payload) : state.setup.steps
+      }
+    };
+  }
+
+  if (action.type === "setup-log") {
+    return {
+      ...state,
+      setup: {
+        ...state.setup,
+        logs: appendSetupLog(state.setup.logs, action.payload)
       }
     };
   }
@@ -36,8 +90,21 @@ export function reduceAction(state, action) {
       setup: {
         ...state.setup,
         status: "ready",
-        currentStep: state.setup.totalSteps
+        currentStep: state.setup.totalSteps,
+        steps: state.setup.steps.map((step) => ({ ...step, status: "done" }))
       }
+    };
+  }
+
+  if (action.type === "setup-failed") {
+    return {
+      ...state,
+      setup: {
+        ...state.setup,
+        status: "failed",
+        message: action.payload ?? state.setup.message
+      },
+      lastTaskMessage: action.payload ?? state.lastTaskMessage
     };
   }
 

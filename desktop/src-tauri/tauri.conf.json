@@ -27,6 +27,15 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "resources": [
+      "../../desktop_runtime",
+      "../../deployment",
+      "../../scripts",
+      "../../tools",
+      "../../requirements.txt",
+      "../../mlx_pipeline.py",
+      "resources/**/*"
+    ],
     "icon": [],
     "macOS": {
       "minimumSystemVersion": "13.0"

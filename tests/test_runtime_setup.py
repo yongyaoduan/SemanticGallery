@@ -57,8 +57,9 @@ class RuntimeSetupTests(unittest.TestCase):
             ],
         )
 
+    @mock.patch("desktop_runtime.runtime_setup.resolve_uv_binary")
     @mock.patch("desktop_runtime.runtime_setup.subprocess.run")
-    def test_runtime_downloader_installs_python_and_venv_via_uv(self, run_mock):
+    def test_runtime_downloader_installs_python_and_venv_via_uv(self, run_mock, resolve_uv_binary_mock):
         with tempfile.TemporaryDirectory(prefix="sg-runtime-") as tmp_dir:
             root = Path(tmp_dir)
             paths = AppPaths(
@@ -73,6 +74,7 @@ class RuntimeSetupTests(unittest.TestCase):
                 config_dir=root / "config",
                 bundled_resources_dir=root / "resources",
             )
+            resolve_uv_binary_mock.return_value = paths.bundled_resources_dir / "uv"
 
             RuntimeDownloader().ensure_python_runtime(paths)
 
@@ -94,8 +96,9 @@ class RuntimeSetupTests(unittest.TestCase):
             ],
         )
 
+    @mock.patch("desktop_runtime.runtime_setup.resolve_uv_binary")
     @mock.patch("desktop_runtime.runtime_setup.subprocess.run")
-    def test_runtime_downloader_installs_dependencies_with_uv_pip(self, run_mock):
+    def test_runtime_downloader_installs_dependencies_with_uv_pip(self, run_mock, resolve_uv_binary_mock):
         with tempfile.TemporaryDirectory(prefix="sg-runtime-") as tmp_dir:
             root = Path(tmp_dir)
             paths = AppPaths(
@@ -110,6 +113,7 @@ class RuntimeSetupTests(unittest.TestCase):
                 config_dir=root / "config",
                 bundled_resources_dir=root / "resources",
             )
+            resolve_uv_binary_mock.return_value = paths.bundled_resources_dir / "uv"
 
             RuntimeDownloader().ensure_dependencies(paths)
 
@@ -132,6 +136,61 @@ class RuntimeSetupTests(unittest.TestCase):
                 ),
             ],
         )
+
+    @mock.patch("desktop_runtime.runtime_setup.subprocess.run")
+    def test_runtime_downloader_prepares_base_model_with_runtime_python(self, run_mock):
+        with tempfile.TemporaryDirectory(prefix="sg-runtime-") as tmp_dir:
+            root = Path(tmp_dir)
+            paths = AppPaths(
+                app_name="SemanticGallery",
+                support_dir=root / "support",
+                runtime_dir=root / "runtime",
+                cache_dir=root / "cache",
+                logs_dir=root / "logs",
+                stage2_dir=root / "stage2",
+                thumbnails_dir=root / "thumbs",
+                index_db_path=root / "index.sqlite3",
+                config_dir=root / "config",
+                bundled_resources_dir=root / "resources",
+            )
+
+            RuntimeDownloader().ensure_base_model(paths)
+
+        command = run_mock.call_args.args[0]
+        self.assertEqual(command[0], (paths.runtime_dir / ".venv" / "bin" / "python").as_posix())
+        self.assertEqual(command[1], "-c")
+        self.assertIn("from mlx_embeddings.convert import convert", command[2])
+        self.assertIn('"google/siglip2-base-patch16-224"', command[2])
+        self.assertEqual(command[3], paths.runtime_dir.as_posix())
+        self.assertEqual(run_mock.call_args.kwargs, {"check": True})
+
+    @mock.patch("desktop_runtime.runtime_setup.subprocess.run")
+    def test_runtime_downloader_prepares_public_anchor_with_runtime_python(self, run_mock):
+        with tempfile.TemporaryDirectory(prefix="sg-runtime-") as tmp_dir:
+            root = Path(tmp_dir)
+            paths = AppPaths(
+                app_name="SemanticGallery",
+                support_dir=root / "support",
+                runtime_dir=root / "runtime",
+                cache_dir=root / "cache",
+                logs_dir=root / "logs",
+                stage2_dir=root / "stage2",
+                thumbnails_dir=root / "thumbs",
+                index_db_path=root / "index.sqlite3",
+                config_dir=root / "config",
+                bundled_resources_dir=root / "resources",
+            )
+
+            RuntimeDownloader().ensure_public_anchor(paths)
+
+        command = run_mock.call_args.args[0]
+        self.assertEqual(command[0], (paths.runtime_dir / ".venv" / "bin" / "python").as_posix())
+        self.assertEqual(command[1], "-c")
+        self.assertIn("from huggingface_hub import hf_hub_download", command[2])
+        self.assertIn("Lucas20250626/semanticgallery-stage2-public-anchor", command[2])
+        self.assertIn("tarfile.open", command[2])
+        self.assertEqual(command[3], paths.runtime_dir.as_posix())
+        self.assertEqual(run_mock.call_args.kwargs, {"check": True})
 
 
 if __name__ == "__main__":

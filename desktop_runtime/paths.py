@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,8 +30,8 @@ def resolve_bundled_resources_dir() -> Path:
     return Path(__file__).resolve().parent / "resources"
 
 
-def build_app_paths(home_dir: Path, app_name: str = "SemanticGallery") -> AppPaths:
-    support_dir = home_dir.expanduser().resolve() / "Library" / "Application Support" / app_name
+def build_app_paths_from_support_dir(support_dir: Path, app_name: str = "SemanticGallery") -> AppPaths:
+    support_dir = support_dir.expanduser().resolve()
     return AppPaths(
         app_name=app_name,
         support_dir=support_dir,
@@ -45,7 +46,16 @@ def build_app_paths(home_dir: Path, app_name: str = "SemanticGallery") -> AppPat
     )
 
 
+def build_app_paths(home_dir: Path, app_name: str = "SemanticGallery") -> AppPaths:
+    support_dir = home_dir.expanduser().resolve() / "Library" / "Application Support" / app_name
+    return build_app_paths_from_support_dir(support_dir, app_name=app_name)
+
+
 def resolve_uv_binary(paths: AppPaths, override: str | None) -> Path:
     if override:
         return Path(override).expanduser()
-    return paths.bundled_resources_dir / "uv"
+    bundled = paths.bundled_resources_dir / "uv"
+    if bundled.exists():
+        return bundled
+    fallback = shutil.which("uv")
+    return Path(fallback) if fallback else bundled

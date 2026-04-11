@@ -6,7 +6,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from desktop_runtime.paths import AppPaths, BUNDLED_RESOURCES_DIR_ENV_VAR, build_app_paths, resolve_uv_binary
+from desktop_runtime.paths import (
+    AppPaths,
+    BUNDLED_RESOURCES_DIR_ENV_VAR,
+    build_app_paths,
+    build_app_paths_from_support_dir,
+    resolve_uv_binary,
+)
 from desktop_runtime.progress import ProgressEvent
 
 
@@ -37,7 +43,17 @@ class DesktopPathsTests(unittest.TestCase):
 
         self.assertEqual(paths.bundled_resources_dir, override)
 
-    def test_resolve_uv_binary_prefers_env_override_then_bundled_resource(self):
+    def test_build_app_paths_from_support_dir_keeps_runtime_under_support_root(self):
+        support_dir = Path("/Users/tester/Library/Application Support/com.semanticgallery.desktop")
+
+        with patch.dict(os.environ, {}, clear=True):
+            paths = build_app_paths_from_support_dir(support_dir)
+
+        self.assertEqual(paths.support_dir, support_dir)
+        self.assertEqual(paths.runtime_dir, support_dir / "runtime")
+        self.assertEqual(paths.index_db_path, support_dir / "index.sqlite3")
+
+    def test_resolve_uv_binary_prefers_env_override_then_bundled_resource_then_path(self):
         with tempfile.TemporaryDirectory(prefix="sg-paths-") as tmp_dir:
             root = Path(tmp_dir)
             override = root / "custom-uv"
@@ -64,6 +80,11 @@ class DesktopPathsTests(unittest.TestCase):
 
             resolved = resolve_uv_binary(paths, "")
             self.assertEqual(resolved, bundled)
+
+            bundled.unlink()
+            with patch("desktop_runtime.paths.shutil.which", return_value="/opt/homebrew/bin/uv"):
+                resolved = resolve_uv_binary(paths, None)
+            self.assertEqual(resolved, Path("/opt/homebrew/bin/uv"))
 
     def test_progress_event_serializes_to_payload(self):
         event = ProgressEvent(task="setup", phase="download", message="Fetching model", current=3, total=5)

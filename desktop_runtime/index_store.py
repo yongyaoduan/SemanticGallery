@@ -50,6 +50,10 @@ class IndexStore:
               is_present INTEGER NOT NULL,
               last_scanned_at TEXT DEFAULT CURRENT_TIMESTAMP
             );
+            CREATE INDEX IF NOT EXISTS idx_image_paths_folder_present_content
+              ON image_paths(folder_path, is_present, content_hash, absolute_path);
+            CREATE INDEX IF NOT EXISTS idx_image_embeddings_signature_content
+              ON image_embeddings(encoder_signature, content_hash);
             CREATE TABLE IF NOT EXISTS folder_states (
               folder_path TEXT PRIMARY KEY,
               active_encoder_signature TEXT NOT NULL,
@@ -142,3 +146,6 @@ class IndexStore:
 
     def count_paths(self) -> int:
         return int(self.connection.execute("SELECT COUNT(*) FROM image_paths").fetchone()[0])
+
+    def count_folder_states(self) -> int:
+        return int(self.connection.execute("SELECT COUNT(*) FROM folder_states").fetchone()[0])

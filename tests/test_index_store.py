@@ -10,6 +10,14 @@ from desktop_runtime.index_store import IndexStore
 
 
 class IndexStoreTests(unittest.TestCase):
+    def test_migrate_creates_folder_states_table(self):
+        with tempfile.TemporaryDirectory(prefix="sg-index-store-") as tmp_dir:
+            db_path = Path(tmp_dir) / "index.sqlite3"
+            store = IndexStore.connect(db_path)
+            store.migrate()
+
+            self.assertEqual(store.count_folder_states(), 0)
+
     def test_duplicate_content_reuses_embedding_but_keeps_two_paths(self):
         with tempfile.TemporaryDirectory(prefix="sg-index-store-") as tmp_dir:
             db_path = Path(tmp_dir) / "index.sqlite3"
@@ -40,6 +48,27 @@ class IndexStoreTests(unittest.TestCase):
             self.assertEqual(store.count_assets(), 1)
             self.assertEqual(store.count_embeddings(), 1)
             self.assertEqual(store.count_paths(), 2)
+
+    def test_migrate_creates_hot_path_indexes(self):
+        with tempfile.TemporaryDirectory(prefix="sg-index-store-") as tmp_dir:
+            db_path = Path(tmp_dir) / "index.sqlite3"
+            store = IndexStore.connect(db_path)
+            store.migrate()
+
+            indexes = {
+                row["name"]
+                for row in store.connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx_image_%'"
+                ).fetchall()
+            }
+
+            self.assertEqual(
+                indexes,
+                {
+                    "idx_image_paths_folder_present_content",
+                    "idx_image_embeddings_signature_content",
+                },
+            )
 
     def test_get_folder_rows_returns_present_paths_for_encoder_signature(self):
         with tempfile.TemporaryDirectory(prefix="sg-index-store-") as tmp_dir:

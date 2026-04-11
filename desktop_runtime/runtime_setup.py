@@ -24,11 +24,8 @@ class RuntimeDownloaderProtocol(Protocol):
 
 
 class RuntimeDownloader:
-    def __init__(self, uv_override: str | None = None):
-        self.uv_override = uv_override
-
     def ensure_python_runtime(self, paths: AppPaths) -> None:
-        uv_path = resolve_uv_binary(paths, override=self.uv_override)
+        uv_path = resolve_uv_binary(paths, override=None)
         subprocess.run([uv_path.as_posix(), "python", "install", "3.12"], check=True)
         subprocess.run(
             [
@@ -42,7 +39,7 @@ class RuntimeDownloader:
         )
 
     def ensure_dependencies(self, paths: AppPaths) -> None:
-        uv_path = resolve_uv_binary(paths, override=self.uv_override)
+        uv_path = resolve_uv_binary(paths, override=None)
         python_bin = paths.runtime_dir / ".venv" / "bin" / "python"
         requirements_path = Path(__file__).resolve().parents[1] / "requirements.txt"
         subprocess.run(

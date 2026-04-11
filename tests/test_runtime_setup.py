@@ -38,13 +38,13 @@ class RuntimeSetupTests(unittest.TestCase):
         self.assertEqual(status, SetupStatus.READY)
         self.assertEqual(downloader.calls, ["python", "deps", "model", "anchor"])
         self.assertEqual(
-            [(event.task, event.phase) for event in events if event.phase == "start"],
+            [(event.task, event.phase, event.message) for event in events if event.phase == "start"],
             [
-                ("check-runtime", "start"),
-                ("prepare-dependencies", "start"),
-                ("prepare-base-model", "start"),
-                ("prepare-public-anchor", "start"),
-                ("finish-setup", "start"),
+                ("check-runtime", "start", "Checking the local runtime"),
+                ("prepare-dependencies", "start", "Preparing Python dependencies"),
+                ("prepare-base-model", "start", "Preparing the base model"),
+                ("prepare-public-anchor", "start", "Preparing the public adaptation set"),
+                ("finish-setup", "start", "Finishing setup"),
             ],
         )
 

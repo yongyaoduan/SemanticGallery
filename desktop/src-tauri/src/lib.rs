@@ -126,6 +126,28 @@ fn find_on_path(binary_name: &str) -> Option<PathBuf> {
     None
 }
 
+fn is_runtime_template_root(candidate: &Path) -> bool {
+    candidate.join("desktop_runtime").is_dir()
+        && candidate.join("deployment").is_dir()
+        && candidate.join("scripts").is_dir()
+        && candidate.join("tools").is_dir()
+        && candidate.join("requirements.txt").is_file()
+        && candidate.join("mlx_pipeline.py").is_file()
+}
+
+fn locate_runtime_template_root(resource_dir: &Path) -> Option<PathBuf> {
+    if is_runtime_template_root(resource_dir) {
+        return Some(resource_dir.to_path_buf());
+    }
+
+    let nested_candidate = resource_dir.join("_up_").join("_up_");
+    if is_runtime_template_root(&nested_candidate) {
+        return Some(nested_candidate);
+    }
+
+    None
+}
+
 fn resolve_runtime_template_dir(app: &AppHandle) -> Result<PathBuf, String> {
     if let Ok(override_dir) = env::var("SEMANTICGALLERY_RUNTIME_TEMPLATE_DIR") {
         let path = PathBuf::from(override_dir);
@@ -133,13 +155,13 @@ fn resolve_runtime_template_dir(app: &AppHandle) -> Result<PathBuf, String> {
     }
 
     if let Ok(resource_dir) = app.path().resource_dir() {
-        if resource_dir.join("desktop_runtime").is_dir() {
-            return Ok(resource_dir);
+        if let Some(template_root) = locate_runtime_template_root(&resource_dir) {
+            return Ok(template_root);
         }
     }
 
     let dev_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    if dev_root.join("desktop_runtime").is_dir() {
+    if is_runtime_template_root(&dev_root) {
         return Ok(dev_root.canonicalize().unwrap_or(dev_root));
     }
 
@@ -156,6 +178,10 @@ fn resolve_uv_binary(app: &AppHandle, template_root: &Path) -> Result<PathBuf, S
         let candidate = resource_dir.join("uv");
         if candidate.is_file() {
             return Ok(candidate);
+        }
+        let nested_candidate = resource_dir.join("resources").join("uv");
+        if nested_candidate.is_file() {
+            return Ok(nested_candidate);
         }
     }
 
@@ -177,6 +203,10 @@ fn resolve_bundled_resources_dir(app: &AppHandle, template_root: &Path) -> Optio
     }
 
     if let Ok(resource_dir) = app.path().resource_dir() {
+        let nested_candidate = resource_dir.join("resources");
+        if nested_candidate.exists() {
+            return Some(nested_candidate);
+        }
         return Some(resource_dir);
     }
 
@@ -486,7 +516,8 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_bootstrap_args, copy_file, parse_setup_payload, parse_sidecar_port, sync_runtime_template,
+        build_bootstrap_args, copy_file, is_runtime_template_root, locate_runtime_template_root,
+        parse_setup_payload, parse_sidecar_port, sync_runtime_template,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -601,5 +632,24 @@ mod tests {
 
         let _ = fs::remove_dir_all(template_root);
         let _ = fs::remove_dir_all(runtime_root);
+    }
+
+    #[test]
+    fn locate_runtime_template_root_accepts_nested_up_segments() {
+        let resource_root = temp_root("resources");
+        let nested_root = resource_root.join("_up_").join("_up_");
+        fs::create_dir_all(nested_root.join("desktop_runtime")).expect("failed to create desktop_runtime");
+        fs::create_dir_all(nested_root.join("deployment")).expect("failed to create deployment");
+        fs::create_dir_all(nested_root.join("scripts")).expect("failed to create scripts");
+        fs::create_dir_all(nested_root.join("tools")).expect("failed to create tools");
+        fs::write(nested_root.join("requirements.txt"), "").expect("failed to write requirements");
+        fs::write(nested_root.join("mlx_pipeline.py"), "").expect("failed to write mlx_pipeline");
+
+        let located = locate_runtime_template_root(&resource_root).expect("template root should be found");
+
+        assert!(is_runtime_template_root(&located));
+        assert_eq!(located, nested_root);
+
+        let _ = fs::remove_dir_all(resource_root);
     }
 }

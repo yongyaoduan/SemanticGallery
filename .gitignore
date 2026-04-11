@@ -9,6 +9,7 @@ logs/
 .venv/
 .venv-mlx/
 .vscode/
+.worktrees/
 
 datasets/
 

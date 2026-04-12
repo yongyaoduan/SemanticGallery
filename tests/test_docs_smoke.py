@@ -10,9 +10,11 @@ class DocsSmokeTests(unittest.TestCase):
         self.assertIn("datasets/private_gallery_local/<gallery-key>/full_manifest.jsonl", readme)
         self.assertIn("deployment/search_configs/<gallery-key>.json", readme)
         self.assertIn("Private images do not leave the machine.", readme)
+        self.assertIn("SemanticGallery-macos-arm64.dmg", readme)
         self.assertIn("SemanticGallery-macos-arm64.app.zip", readme)
         self.assertIn("Run Stage 2", readme)
         self.assertIn("index.sqlite3", readme)
+        self.assertIn("build_desktop_release.py", readme)
 
     def test_privacy_docs_include_incremental_state_files(self):
         privacy = Path("docs/privacy.md").read_text(encoding="utf-8")

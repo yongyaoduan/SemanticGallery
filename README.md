@@ -21,11 +21,19 @@ SemanticGallery is a local-first semantic image search app for Apple Silicon. Yo
 
 The first GitHub Release publishes a macOS desktop build.
 
-- Install the latest `SemanticGallery-macos-arm64.app.zip` from GitHub Releases.
+- Install the latest `SemanticGallery-macos-arm64.dmg` from GitHub Releases. The release also keeps `SemanticGallery-macos-arm64.app.zip` as a fallback artifact.
 - On the first launch, the desktop app creates `~/Library/Application Support/com.semanticgallery.desktop/`, prepares a local Python runtime, and downloads the MLX base model, the published Stage 1 checkpoint, and the small public Stage 2 anchor only when those assets are missing.
 - Open **Settings** and click **Choose Folder** to pick a local album from Finder. The active folder search view is folder-scoped, but the shared SQLite index reuses embeddings by image content hash and stores a separate path row for every observed file.
 - **Run Stage 2** appears in **Settings**. It starts only when you click it, and it refuses to run when the active folder has fewer than `100` supported images.
 - The refresh icon forces an immediate rescan. The desktop app also runs a lightweight folder check every `5` seconds and skips the expensive path when nothing changed.
+
+Maintainers can produce the signed desktop release locally with:
+
+```bash
+python scripts/build_desktop_release.py --require-developer-id --require-notarization
+```
+
+That command expects a `Developer ID Application` signing identity plus notarization credentials in the environment. It writes the final `.dmg` and `.app.zip` into `dist/release/`.
 
 ## Quick Start
 

@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from desktop_runtime.progress import ProgressEvent
 from desktop_runtime.runtime_bootstrap import (
@@ -27,6 +28,21 @@ class RuntimeBootstrapTests(unittest.TestCase):
         self.assertEqual(paths.runtime_dir, runtime_dir.resolve())
         self.assertEqual(paths.index_db_path, support_dir.resolve() / "index.sqlite3")
 
+    def test_build_runtime_paths_uses_bundled_resources_override(self):
+        with tempfile.TemporaryDirectory(prefix="sg-bootstrap-") as tmp_dir:
+            support_dir = Path(tmp_dir) / "SemanticGallery"
+            runtime_dir = support_dir / "runtime"
+            runtime_dir.mkdir(parents=True)
+            bundled_resources_dir = Path(tmp_dir) / "bundled-resources"
+            bundled_resources_dir.mkdir()
+
+            paths = build_runtime_paths(
+                runtime_dir,
+                bundled_resources_dir=bundled_resources_dir,
+            )
+
+        self.assertEqual(paths.bundled_resources_dir, bundled_resources_dir.resolve())
+
     def test_emit_progress_line_serializes_json_payload(self):
         event = ProgressEvent(
             task="prepare-base-model",
@@ -36,7 +52,7 @@ class RuntimeBootstrapTests(unittest.TestCase):
             total=5,
         )
 
-        with unittest.mock.patch("builtins.print") as print_mock:
+        with mock.patch("builtins.print") as print_mock:
             emit_progress_line(event)
 
         message = print_mock.call_args.args[0]

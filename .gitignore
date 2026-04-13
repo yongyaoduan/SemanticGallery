@@ -12,6 +12,9 @@ logs/
 .worktrees/
 desktop/node_modules/
 desktop/dist/
+desktop/.appium/
+desktop/src-tauri/resources/uv
+desktop/src-tauri/resources/uninstall/
 desktop/src-tauri/target/
 dist/
 

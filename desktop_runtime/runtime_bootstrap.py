@@ -27,10 +27,17 @@ def parse_args():
     return parser.parse_args()
 
 
-def build_runtime_paths(workspace_root: Path) -> AppPaths:
+def build_runtime_paths(
+    workspace_root: Path,
+    *,
+    bundled_resources_dir: Path | None = None,
+) -> AppPaths:
     runtime_root = workspace_root.expanduser().resolve()
     support_root = runtime_root.parent if runtime_root.name == "runtime" else runtime_root
-    return build_app_paths_from_support_dir(support_root)
+    return build_app_paths_from_support_dir(
+        support_root,
+        bundled_resources_dir=bundled_resources_dir,
+    )
 
 
 def emit_progress_line(event: ProgressEvent) -> None:
@@ -63,9 +70,11 @@ def build_sidecar_command(
 def main() -> None:
     args = parse_args()
     runtime_root = Path(args.workspace_root).expanduser().resolve()
-    paths = build_runtime_paths(runtime_root)
+    bundled_resources_dir = None
     if args.bundled_resources_dir:
-        os.environ[BUNDLED_RESOURCES_DIR_ENV_VAR] = Path(args.bundled_resources_dir).expanduser().resolve().as_posix()
+        bundled_resources_dir = Path(args.bundled_resources_dir).expanduser().resolve()
+        os.environ[BUNDLED_RESOURCES_DIR_ENV_VAR] = bundled_resources_dir.as_posix()
+    paths = build_runtime_paths(runtime_root, bundled_resources_dir=bundled_resources_dir)
 
     setup = RuntimeSetup(paths=paths, downloader=RuntimeDownloader(), emit=emit_progress_line)
     setup.prepare()

@@ -23,14 +23,20 @@ class AppPaths:
     bundled_resources_dir: Path
 
 
-def resolve_bundled_resources_dir() -> Path:
+def resolve_bundled_resources_dir(override: str | Path | None = None) -> Path:
+    if override is not None:
+        return Path(override).expanduser().resolve()
     override = os.environ.get(BUNDLED_RESOURCES_DIR_ENV_VAR)
     if override:
-        return Path(override).expanduser()
+        return Path(override).expanduser().resolve()
     return Path(__file__).resolve().parent / "resources"
 
 
-def build_app_paths_from_support_dir(support_dir: Path, app_name: str = "SemanticGallery") -> AppPaths:
+def build_app_paths_from_support_dir(
+    support_dir: Path,
+    app_name: str = "SemanticGallery",
+    bundled_resources_dir: str | Path | None = None,
+) -> AppPaths:
     support_dir = support_dir.expanduser().resolve()
     return AppPaths(
         app_name=app_name,
@@ -42,13 +48,21 @@ def build_app_paths_from_support_dir(support_dir: Path, app_name: str = "Semanti
         thumbnails_dir=support_dir / "thumbs",
         index_db_path=support_dir / "index.sqlite3",
         config_dir=support_dir / "config",
-        bundled_resources_dir=resolve_bundled_resources_dir(),
+        bundled_resources_dir=resolve_bundled_resources_dir(bundled_resources_dir),
     )
 
 
-def build_app_paths(home_dir: Path, app_name: str = "SemanticGallery") -> AppPaths:
+def build_app_paths(
+    home_dir: Path,
+    app_name: str = "SemanticGallery",
+    bundled_resources_dir: str | Path | None = None,
+) -> AppPaths:
     support_dir = home_dir.expanduser().resolve() / "Library" / "Application Support" / app_name
-    return build_app_paths_from_support_dir(support_dir, app_name=app_name)
+    return build_app_paths_from_support_dir(
+        support_dir,
+        app_name=app_name,
+        bundled_resources_dir=bundled_resources_dir,
+    )
 
 
 def resolve_uv_binary(paths: AppPaths, override: str | None) -> Path:

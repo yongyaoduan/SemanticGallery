@@ -45,6 +45,25 @@ class SearchViewTests(unittest.TestCase):
 
             self.assertEqual(matches, ["/tmp/folder-a/diagonal.jpg", "/tmp/folder-a/strong-x.jpg"])
 
+    def test_active_search_view_can_drop_deleted_paths_without_rebuilding_from_store(self):
+        view = ActiveSearchView(
+            paths=["/tmp/folder-a/one.jpg", "/tmp/folder-a/two.jpg", "/tmp/folder-a/three.jpg"],
+            matrix=np.asarray(
+                [
+                    [1.0, 0.0],
+                    [0.0, 1.0],
+                    [1.0, 1.0],
+                ],
+                dtype=np.float32,
+            ),
+        )
+
+        reduced = view.without_paths(["/tmp/folder-a/two.jpg"])
+
+        self.assertEqual(reduced.paths, ["/tmp/folder-a/one.jpg", "/tmp/folder-a/three.jpg"])
+        self.assertEqual(reduced.matrix.shape, (2, 2))
+        self.assertEqual(reduced.search(np.asarray([0.0, 1.0], dtype=np.float32), limit=2), ["/tmp/folder-a/three.jpg", "/tmp/folder-a/one.jpg"])
+
 
 if __name__ == "__main__":
     unittest.main()

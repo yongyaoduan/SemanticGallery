@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import argparse
 import os
+import plistlib
 import shutil
 import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from textwrap import dedent
 from typing import Iterable
 
 
@@ -16,6 +18,18 @@ DESKTOP_DIR = REPO_ROOT / "desktop"
 TAURI_DIR = DESKTOP_DIR / "src-tauri"
 RESOURCES_DIR = TAURI_DIR / "resources"
 BUILD_BUNDLE_DIR = TAURI_DIR / "target" / "release" / "bundle"
+PRODUCT_NAME = "SemanticGallery"
+APP_BUNDLE_NAME = f"{PRODUCT_NAME}.app"
+UNINSTALLER_APP_NAME = f"Uninstall {PRODUCT_NAME}.app"
+APP_BUNDLE_IDENTIFIER = "com.semanticgallery.desktop"
+UNINSTALLER_BUNDLE_IDENTIFIER = "com.semanticgallery.desktop.uninstall"
+ICON_FILENAMES = [
+    "32x32.png",
+    "128x128.png",
+    "128x128@2x.png",
+    "icon.icns",
+    "icon.png",
+]
 
 
 @dataclass
@@ -131,6 +145,169 @@ def stage_uv_binary() -> Path:
     return destination
 
 
+def render_uninstaller_applescript(
+    app_name: str = PRODUCT_NAME,
+    bundle_identifier: str = APP_BUNDLE_IDENTIFIER,
+) -> str:
+    return (
+        dedent(
+            f"""
+            ObjC.import("Foundation");
+
+            function parentPath(path) {{
+              return ObjC.unwrap($(path).stringByDeletingLastPathComponent);
+            }}
+
+            function fileExists(path) {{
+              return $.NSFileManager.defaultManager.fileExistsAtPath($(path));
+            }}
+
+            function uniquePaths(paths) {{
+              return [...new Set(paths.filter(Boolean))];
+            }}
+
+            function moveToTrash(path) {{
+              const manager = $.NSFileManager.defaultManager;
+              const resultingItem = Ref();
+              const error = Ref();
+              manager.trashItemAtURLResultingItemURLError($.NSURL.fileURLWithPath($(path)), resultingItem, error);
+            }}
+
+            function run() {{
+              const appName = "{app_name}";
+              const bundleIdentifier = "{bundle_identifier}";
+              const app = Application.currentApplication();
+              app.includeStandardAdditions = true;
+              app.activate();
+
+              const helperPath = ObjC.unwrap($.NSBundle.mainBundle.bundlePath);
+              const helperDir = parentPath(helperPath);
+              const helperParent = parentPath(helperDir);
+              const homeDir = ObjC.unwrap($.NSHomeDirectory());
+
+              try {{
+                app.displayDialog(
+                  `Uninstall ${{appName}} and remove its downloaded runtime, models, local indexes, caches, and setup data from this Mac?`,
+                  {{
+                    withTitle: appName,
+                    buttons: ["Cancel", "Uninstall"],
+                    defaultButton: "Uninstall",
+                    cancelButton: "Cancel"
+                  }}
+                );
+              }} catch (error) {{
+                return;
+              }}
+
+              try {{
+                Application(bundleIdentifier).quit();
+              }} catch (error) {{
+              }}
+              try {{
+                app.doShellScript(
+                  "/usr/bin/pkill -f 'semanticgallery_desktop' || true; " +
+                  "/usr/bin/pkill -f 'desktop_runtime.sidecar_main' || true; " +
+                  "/usr/bin/pkill -f 'desktop_runtime.runtime_bootstrap' || true"
+                );
+              }} catch (error) {{
+              }}
+              delay(1);
+
+              const appCandidates = [
+                `${{helperDir}}/{APP_BUNDLE_NAME}`,
+                `${{helperParent}}/{APP_BUNDLE_NAME}`,
+                `/Applications/{APP_BUNDLE_NAME}`,
+                `${{homeDir}}/Applications/{APP_BUNDLE_NAME}`
+              ];
+              const dataCandidates = [
+                `${{homeDir}}/Library/Application Support/{APP_BUNDLE_IDENTIFIER}`,
+                `${{homeDir}}/Library/Application Support/{PRODUCT_NAME}`,
+                `${{homeDir}}/Library/Caches/{APP_BUNDLE_IDENTIFIER}`,
+                `${{homeDir}}/Library/WebKit/{APP_BUNDLE_IDENTIFIER}`,
+                `${{homeDir}}/Library/HTTPStorages/{APP_BUNDLE_IDENTIFIER}`,
+                `${{homeDir}}/Library/HTTPStorages/{APP_BUNDLE_IDENTIFIER}.binarycookies`,
+                `${{homeDir}}/Library/Preferences/{APP_BUNDLE_IDENTIFIER}.plist`,
+                `${{homeDir}}/Library/Saved Application State/{APP_BUNDLE_IDENTIFIER}.savedState`
+              ];
+
+              const removalTargets = uniquePaths(
+                [...appCandidates, ...dataCandidates].filter((path) => path !== helperPath && fileExists(path))
+              );
+              if (!removalTargets.length) {{
+                app.displayDialog(`${{appName}} did not find an installed app or local runtime data to remove.`, {{
+                  withTitle: appName,
+                  buttons: ["OK"],
+                  defaultButton: "OK"
+                }});
+                return;
+              }}
+
+              removalTargets.forEach((path) => {{
+                try {{
+                  moveToTrash(path);
+                }} catch (error) {{
+                }}
+              }});
+
+              app.displayDialog(`${{appName}} moved the app and its local runtime data to the Trash.`, {{
+                withTitle: appName,
+                buttons: ["OK"],
+                defaultButton: "OK"
+              }});
+            }}
+            """
+        ).strip()
+        + "\n"
+    )
+
+
+def stage_uninstaller_app() -> Path:
+    helper_root = RESOURCES_DIR / "uninstall"
+    helper_root.mkdir(parents=True, exist_ok=True)
+    destination = helper_root / UNINSTALLER_APP_NAME
+    if destination.exists():
+        shutil.rmtree(destination, ignore_errors=True)
+
+    with tempfile.NamedTemporaryFile("w", suffix=".js", delete=False) as handle:
+        handle.write(render_uninstaller_applescript())
+        script_path = Path(handle.name)
+
+    try:
+        subprocess.run(["osacompile", "-l", "JavaScript", "-o", str(destination), str(script_path)], check=True)
+    finally:
+        script_path.unlink(missing_ok=True)
+
+    icon_source = TAURI_DIR / "icons" / "icon.icns"
+    applet_icon = destination / "Contents" / "Resources" / "applet.icns"
+    if icon_source.is_file():
+        shutil.copy2(icon_source, applet_icon)
+
+    info_plist_path = destination / "Contents" / "Info.plist"
+    if info_plist_path.is_file():
+        with info_plist_path.open("rb") as handle:
+            info = plistlib.load(handle)
+        info["CFBundleDisplayName"] = f"Uninstall {PRODUCT_NAME}"
+        info["CFBundleName"] = f"Uninstall {PRODUCT_NAME}"
+        info["CFBundleIdentifier"] = UNINSTALLER_BUNDLE_IDENTIFIER
+        with info_plist_path.open("wb") as handle:
+            plistlib.dump(info, handle)
+
+    return destination
+
+
+def icons_are_ready() -> bool:
+    icon_dir = TAURI_DIR / "icons"
+    return all((icon_dir / name).is_file() for name in ICON_FILENAMES)
+
+
+def ensure_icons() -> None:
+    try:
+        run([sys.executable, str(DESKTOP_DIR / "scripts" / "generate_icons.py")], cwd=REPO_ROOT)
+    except subprocess.CalledProcessError:
+        if not icons_are_ready():
+            raise
+
+
 def clear_previous_outputs(output_dir: Path) -> None:
     for app_dir in (BUILD_BUNDLE_DIR / "macos").glob("*.app"):
         shutil.rmtree(app_dir, ignore_errors=True)
@@ -200,6 +377,48 @@ def staple(path: Path) -> None:
     subprocess.run(["xcrun", "stapler", "staple", str(path)], check=True)
 
 
+def prepare_release_stage(app_path: Path, stage_root: Path, *, uninstall_helper_path: Path | None = None) -> Path:
+    stage_root.mkdir(parents=True, exist_ok=True)
+    volume_root = stage_root / PRODUCT_NAME
+    if volume_root.exists():
+        shutil.rmtree(volume_root, ignore_errors=True)
+    volume_root.mkdir()
+    shutil.copytree(app_path, volume_root / app_path.name, symlinks=True)
+    if uninstall_helper_path and uninstall_helper_path.exists():
+        shutil.copytree(uninstall_helper_path, volume_root / uninstall_helper_path.name, symlinks=True)
+    applications_link = volume_root / "Applications"
+    if not applications_link.exists():
+        applications_link.symlink_to("/Applications")
+    return volume_root
+
+
+def build_release_dmg(app_path: Path, destination: Path, *, uninstall_helper_path: Path | None = None) -> Path:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if destination.exists():
+        destination.unlink()
+
+    with tempfile.TemporaryDirectory(prefix="semanticgallery-dmg-stage-") as temp_dir:
+        stage_root = Path(temp_dir)
+        volume_root = prepare_release_stage(app_path, stage_root, uninstall_helper_path=uninstall_helper_path)
+        subprocess.run(
+            [
+                "hdiutil",
+                "create",
+                "-volname",
+                PRODUCT_NAME,
+                "-srcfolder",
+                str(volume_root),
+                "-fs",
+                "HFS+",
+                "-format",
+                "UDZO",
+                str(destination),
+            ],
+            check=True,
+        )
+    return destination
+
+
 def discover_single(pattern: str, *, preferred_name: str | None = None) -> Path:
     matches = sorted(BUILD_BUNDLE_DIR.glob(pattern))
     if not matches:
@@ -227,13 +446,12 @@ def main() -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
 
     stage_uv_binary()
+    uninstall_helper = stage_uninstaller_app()
     clear_previous_outputs(output_dir)
-    run([sys.executable, str(DESKTOP_DIR / "scripts" / "generate_icons.py")], cwd=REPO_ROOT)
-    run(["npm", "run", "tauri:build", "--", "--bundles", "app,dmg"], cwd=DESKTOP_DIR, capture_output=False)
+    ensure_icons()
+    run(["npm", "run", "tauri:build", "--", "--bundles", "app"], cwd=DESKTOP_DIR, capture_output=False)
 
-    app_path = discover_single("macos/*.app", preferred_name="SemanticGallery.app")
-    dmg_path = discover_single("dmg/*.dmg")
-
+    app_path = discover_single("macos/*.app", preferred_name=APP_BUNDLE_NAME)
     identity_output = run(["security", "find-identity", "-v", "-p", "codesigning"])
     identity = select_signing_identity(
         find_signing_identities(identity_output),
@@ -249,10 +467,10 @@ def main() -> int:
             codesign_path(nested, identity, deep=nested.is_dir())
         codesign_path(app_path, identity)
         verify_app(app_path)
+        codesign_path(uninstall_helper, identity, deep=True)
+        verify_app(uninstall_helper)
 
     release_app_zip = archive_app(app_path, output_dir / "SemanticGallery-macos-arm64.app.zip")
-    release_dmg = output_dir / "SemanticGallery-macos-arm64.dmg"
-    shutil.copy2(dmg_path, release_dmg)
 
     credentials = build_notary_credentials(dict(os.environ))
     if args.skip_notarize:
@@ -265,12 +483,19 @@ def main() -> int:
         try:
             notarize(release_app_zip, credentials)
             staple(app_path)
-            notarize(release_dmg, credentials)
-            staple(release_dmg)
             release_app_zip = archive_app(app_path, output_dir / "SemanticGallery-macos-arm64.app.zip")
         finally:
             for temp_file in credentials.temp_files:
                 temp_file.unlink(missing_ok=True)
+
+    release_dmg = build_release_dmg(
+        app_path,
+        output_dir / "SemanticGallery-macos-arm64.dmg",
+        uninstall_helper_path=uninstall_helper,
+    )
+    if credentials is not None:
+        notarize(release_dmg, credentials)
+        staple(release_dmg)
 
     print(release_app_zip)
     print(release_dmg)

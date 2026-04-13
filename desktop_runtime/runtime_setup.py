@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 from enum import StrEnum
 from pathlib import Path
@@ -26,17 +27,76 @@ class RuntimeDownloaderProtocol(Protocol):
 
 class RuntimeDownloader:
     @staticmethod
+    def _dependency_check_code() -> str:
+        return """
+        import datasets, fastapi, huggingface_hub, jinja2, mlx, mlx_embeddings, multipart, pillow_heif, tqdm, uvicorn
+        """
+
+    @staticmethod
     def _runtime_python(paths: AppPaths) -> Path:
         return paths.runtime_dir / ".venv" / "bin" / "python"
+
+    @staticmethod
+    def _process_env(paths: AppPaths) -> dict[str, str]:
+        cache_root = paths.cache_dir
+        python_install_dir = paths.support_dir / "python"
+        huggingface_root = cache_root / "huggingface"
+
+        cache_root.mkdir(parents=True, exist_ok=True)
+        python_install_dir.mkdir(parents=True, exist_ok=True)
+        huggingface_root.mkdir(parents=True, exist_ok=True)
+
+        env = os.environ.copy()
+        env["UV_CACHE_DIR"] = (cache_root / "uv").as_posix()
+        env["UV_PYTHON_INSTALL_DIR"] = python_install_dir.as_posix()
+        env["XDG_CACHE_HOME"] = cache_root.as_posix()
+        env["HF_HOME"] = huggingface_root.as_posix()
+        env["HUGGINGFACE_HUB_CACHE"] = (huggingface_root / "hub").as_posix()
+        env["TRANSFORMERS_CACHE"] = (cache_root / "transformers").as_posix()
+        return env
 
     @classmethod
     def _run_runtime_code(cls, paths: AppPaths, code: str, *args: str) -> None:
         python_bin = cls._runtime_python(paths)
-        subprocess.run([python_bin.as_posix(), "-c", dedent(code), *args], check=True)
+        subprocess.run(
+            [python_bin.as_posix(), "-c", dedent(code), *args],
+            check=True,
+            env=cls._process_env(paths),
+        )
+
+    @classmethod
+    def _dependencies_ready(cls, paths: AppPaths) -> bool:
+        python_bin = cls._runtime_python(paths)
+        if not python_bin.is_file():
+            return False
+
+        result = subprocess.run(
+            [python_bin.as_posix(), "-c", dedent(cls._dependency_check_code())],
+            check=False,
+            env=cls._process_env(paths),
+            capture_output=True,
+            text=True,
+        )
+        return result.returncode == 0
 
     def ensure_python_runtime(self, paths: AppPaths) -> None:
+        if self._runtime_python(paths).is_file():
+            return
+
         uv_path = resolve_uv_binary(paths, override=None)
-        subprocess.run([uv_path.as_posix(), "python", "install", "3.12"], check=True)
+        env = self._process_env(paths)
+        subprocess.run(
+            [
+                uv_path.as_posix(),
+                "python",
+                "install",
+                "3.12",
+                "--install-dir",
+                (paths.support_dir / "python").as_posix(),
+            ],
+            check=True,
+            env=env,
+        )
         subprocess.run(
             [
                 uv_path.as_posix(),
@@ -46,9 +106,13 @@ class RuntimeDownloader:
                 "3.12",
             ],
             check=True,
+            env=env,
         )
 
     def ensure_dependencies(self, paths: AppPaths) -> None:
+        if self._dependencies_ready(paths):
+            return
+
         uv_path = resolve_uv_binary(paths, override=None)
         python_bin = self._runtime_python(paths)
         requirements_path = Path(__file__).resolve().parents[1] / "requirements.txt"
@@ -63,6 +127,7 @@ class RuntimeDownloader:
                 requirements_path.as_posix(),
             ],
             check=True,
+            env=self._process_env(paths),
         )
 
     def ensure_base_model(self, paths: AppPaths) -> None:
@@ -100,6 +165,11 @@ class RuntimeDownloader:
             from huggingface_hub import hf_hub_download
 
             runtime_root = Path(sys.argv[1]).resolve()
+            if runtime_root.as_posix() not in sys.path:
+                sys.path.insert(0, runtime_root.as_posix())
+
+            from deployment.public_anchor import normalize_public_anchor_extract
+
             cache_dir = runtime_root / ".cache" / "semanticgallery" / "stage2_public_anchor"
             archive_path = cache_dir / "semanticgallery-stage2-public-anchor.tar.gz"
             metadata_path = cache_dir / "sample_info.json"
@@ -108,6 +178,7 @@ class RuntimeDownloader:
             screen2words_manifest = extract_root / "screen2words" / "manifest.jsonl"
 
             if flickr_captions.is_file() and screen2words_manifest.is_file():
+                normalize_public_anchor_extract(extract_root)
                 raise SystemExit(0)
 
             cache_dir.mkdir(parents=True, exist_ok=True)
@@ -136,6 +207,7 @@ class RuntimeDownloader:
 
             if metadata_path.exists():
                 shutil.copy2(metadata_path, extract_root / "sample_info.json")
+            normalize_public_anchor_extract(extract_root)
             """,
             paths.runtime_dir.as_posix(),
         )
@@ -176,22 +248,22 @@ class RuntimeSetup:
 
     def prepare(self) -> SetupStatus:
         self.paths.support_dir.mkdir(parents=True, exist_ok=True)
-        self._start("check-runtime", "Checking the local runtime", 0, 5)
+        self._start("check-runtime", "Checking the local runtime", 1, 6)
         self.downloader.ensure_python_runtime(self.paths)
-        self._finish("check-runtime", "Local runtime is ready", 1, 5)
+        self._finish("check-runtime", "Local runtime is ready", 2, 6)
 
-        self._start("prepare-dependencies", "Preparing Python dependencies", 1, 5)
+        self._start("prepare-dependencies", "Preparing Python dependencies", 2, 6)
         self.downloader.ensure_dependencies(self.paths)
-        self._finish("prepare-dependencies", "Python dependencies are ready", 2, 5)
+        self._finish("prepare-dependencies", "Python dependencies are ready", 3, 6)
 
-        self._start("prepare-base-model", "Preparing the base model", 2, 5)
+        self._start("prepare-base-model", "Preparing the base model", 3, 6)
         self.downloader.ensure_base_model(self.paths)
-        self._finish("prepare-base-model", "Base model is ready", 3, 5)
+        self._finish("prepare-base-model", "Base model is ready", 4, 6)
 
-        self._start("prepare-public-anchor", "Preparing the public adaptation set", 3, 5)
+        self._start("prepare-public-anchor", "Preparing the public adaptation set", 4, 6)
         self.downloader.ensure_public_anchor(self.paths)
-        self._finish("prepare-public-anchor", "Public adaptation set is ready", 4, 5)
+        self._finish("prepare-public-anchor", "Public adaptation set is ready", 5, 6)
 
-        self._start("finish-setup", "Finishing setup", 4, 5)
-        self._finish("finish-setup", "Setup is complete", 5, 5)
+        self._start("finish-setup", "Finishing setup", 5, 6)
+        self._finish("finish-setup", "Setup is complete", 6, 6)
         return SetupStatus.READY

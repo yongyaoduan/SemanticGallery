@@ -1,4 +1,5 @@
 const SETUP_STEP_LABELS = {
+  "sync-runtime": "App files",
   "check-runtime": "Python runtime",
   "prepare-dependencies": "Dependencies",
   "prepare-base-model": "Base model",
@@ -6,12 +7,26 @@ const SETUP_STEP_LABELS = {
   "finish-setup": "Finalize"
 };
 
+const DEFAULT_TOTAL_STEPS = Object.keys(SETUP_STEP_LABELS).length;
+
 function createSetupSteps() {
   return Object.entries(SETUP_STEP_LABELS).map(([task, label]) => ({
     task,
     label,
     status: "idle"
   }));
+}
+
+function hydrateSetupSteps(inputSteps) {
+  const known = new Map((inputSteps ?? []).map((step) => [step.task, step]));
+  return Object.entries(SETUP_STEP_LABELS).map(([task, label]) => {
+    const snapshot = known.get(task);
+    return {
+      task,
+      label,
+      status: snapshot?.status ?? "idle"
+    };
+  });
 }
 
 function updateSetupSteps(steps, payload) {
@@ -33,19 +48,48 @@ function appendSetupLog(logs, payload) {
   if (!line) {
     return logs;
   }
+  if (logs.at(-1) === line) {
+    return logs;
+  }
   const nextLogs = [...logs, line];
-  return nextLogs.slice(-10);
+  return nextLogs.slice(-16);
+}
+
+function mergeSetupState(currentSetup, payload) {
+  return {
+    currentStep: payload.currentStep ?? currentSetup.currentStep,
+    totalSteps: payload.totalSteps ?? currentSetup.totalSteps,
+    status: payload.status ?? currentSetup.status,
+    message: payload.message ?? currentSetup.message,
+    onboardingRequired:
+      payload.onboardingRequired ?? payload.onboarding_required ?? currentSetup.onboardingRequired,
+    steps: hydrateSetupSteps(payload.steps ?? currentSetup.steps),
+    logs: payload.logs ?? currentSetup.logs
+  };
 }
 
 export function createInitialState() {
   return {
     setup: {
       currentStep: 0,
-      totalSteps: 5,
+      totalSteps: DEFAULT_TOTAL_STEPS,
       status: "idle",
-      message: "Checking local resources and preparing the model runtime.",
+      message: "Install the local runtime to continue.",
+      onboardingRequired: true,
       steps: createSetupSteps(),
       logs: []
+    },
+    indexing: {
+      status: "idle",
+      phase: "idle",
+      current: 0,
+      total: 0,
+      startedAtMs: null,
+      elapsedSeconds: 0,
+      remainingSeconds: null,
+      embeddedCount: 0,
+      reusedCount: 0,
+      message: "No indexing task is running."
     },
     refresh: {
       isRunning: false,
@@ -54,12 +98,19 @@ export function createInitialState() {
     settingsOpen: false,
     activeFolder: null,
     activeEncoderSignature: "stage1",
-    lastTaskMessage: "No background task has started yet.",
+    lastTaskMessage: "",
     results: []
   };
 }
 
 export function reduceAction(state, action) {
+  if (action.type === "bootstrap-snapshot") {
+    return {
+      ...state,
+      setup: mergeSetupState(state.setup, action.payload ?? {})
+    };
+  }
+
   if (action.type === "setup-progress") {
     return {
       ...state,
@@ -91,6 +142,7 @@ export function reduceAction(state, action) {
         ...state.setup,
         status: "ready",
         currentStep: state.setup.totalSteps,
+        message: "Desktop runtime is ready.",
         steps: state.setup.steps.map((step) => ({ ...step, status: "done" }))
       }
     };
@@ -141,7 +193,8 @@ export function reduceAction(state, action) {
       ...state,
       activeFolder: action.payload.activeFolder,
       activeEncoderSignature: action.payload.activeEncoderSignature,
-      lastTaskMessage: action.payload.lastTaskMessage ?? state.lastTaskMessage
+      lastTaskMessage: action.payload.lastTaskMessage ?? state.lastTaskMessage,
+      indexing: action.payload.indexing ?? state.indexing
     };
   }
 
@@ -150,7 +203,20 @@ export function reduceAction(state, action) {
       ...state,
       activeFolder: action.payload.activeFolder,
       activeEncoderSignature: action.payload.activeEncoderSignature ?? state.activeEncoderSignature,
-      lastTaskMessage: action.payload.lastTaskMessage ?? state.lastTaskMessage
+      lastTaskMessage: action.payload.lastTaskMessage ?? state.lastTaskMessage,
+      indexing: action.payload.indexing ?? state.indexing,
+      results: []
+    };
+  }
+
+  if (action.type === "index-progress") {
+    return {
+      ...state,
+      indexing: {
+        ...state.indexing,
+        ...(action.payload ?? {})
+      },
+      lastTaskMessage: action.payload?.message ?? state.lastTaskMessage
     };
   }
 

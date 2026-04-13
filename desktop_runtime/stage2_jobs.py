@@ -6,7 +6,9 @@ from pathlib import Path
 from typing import Callable, Protocol
 
 from deployment.gallery_keys import gallery_artifact_key
+from deployment.public_anchor import normalize_public_anchor_extract
 from deployment.gallery_state import iter_gallery_paths, sha256_file
+from desktop_runtime.paths import BUNDLED_RESOURCES_DIR_ENV_VAR
 
 
 class Stage2Error(RuntimeError):
@@ -45,6 +47,22 @@ class ScriptStage2Runner:
     def _script_path(self, name: str) -> Path:
         return self.root_dir / "scripts" / name
 
+    @staticmethod
+    def _prepare_runtime_env(env: dict[str, str]) -> dict[str, str]:
+        resources_dir = env.get(BUNDLED_RESOURCES_DIR_ENV_VAR, "").strip()
+        if not resources_dir:
+            return env
+
+        uv_path = (Path(resources_dir).expanduser().resolve() / "uv")
+        if not uv_path.is_file():
+            return env
+
+        existing_parts = [part for part in env.get("PATH", "").split(os.pathsep) if part]
+        uv_dir = uv_path.parent.as_posix()
+        env["PATH"] = os.pathsep.join([uv_dir, *[part for part in existing_parts if part != uv_dir]])
+        env["SEMANTICGALLERY_UV_BINARY"] = uv_path.as_posix()
+        return env
+
     def _run_script(self, script_name: str, env: dict[str, str]) -> None:
         command = ["/bin/bash", self._script_path(script_name).as_posix()]
         try:
@@ -65,18 +83,28 @@ class ScriptStage2Runner:
             proc.wait()
             raise Stage2Error(f"Stage 2 adaptation did not expose logs for {script_name}")
 
+        last_log_line = ""
         for line in iter(stdout.readline, ""):
-            self.emit(line.rstrip("\r\n"))
+            normalized = line.rstrip("\r\n")
+            if normalized:
+                last_log_line = normalized
+            self.emit(normalized)
 
         returncode = proc.wait()
         if returncode != 0:
-            raise Stage2Error(f"Stage 2 adaptation failed in {script_name} with exit code {returncode}")
+            message = f"Stage 2 adaptation failed in {script_name} with exit code {returncode}"
+            if last_log_line:
+                message = f"{message}. Last log: {last_log_line}"
+            raise Stage2Error(message)
 
     def run(self, folder_path: Path) -> str:
         folder_root = folder_path.expanduser().resolve()
         gallery_key = gallery_artifact_key(folder_root)
         private_data_dir = self.root_dir / "datasets" / "private_gallery_local" / gallery_key
         final_run_dir = self.root_dir / "logs" / "semanticgallery_private_data_adapted" / gallery_key
+        normalize_public_anchor_extract(
+            self.root_dir / ".cache" / "semanticgallery" / "stage2_public_anchor" / "extracted"
+        )
 
         env = os.environ.copy()
         env.update(
@@ -88,6 +116,7 @@ class ScriptStage2Runner:
                 "PYTHONUNBUFFERED": "1",
             }
         )
+        env = self._prepare_runtime_env(env)
 
         self._run_script("prepare_data.sh", env)
         self._run_script("adapt_best.sh", env)

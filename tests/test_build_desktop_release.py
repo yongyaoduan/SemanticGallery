@@ -4,6 +4,7 @@ import importlib.util
 import sys
 import tempfile
 import unittest
+import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
@@ -70,6 +71,56 @@ class BuildDesktopReleaseTests(unittest.TestCase):
             with patch.object(self.module, "BUILD_BUNDLE_DIR", bundle_dir):
                 selected = self.module.discover_single("macos/*.app", preferred_name="SemanticGallery.app")
             self.assertEqual(selected, preferred)
+
+    def test_render_uninstaller_applescript_mentions_runtime_cleanup_targets(self):
+        script = self.module.render_uninstaller_applescript()
+
+        self.assertIn("Library/Application Support/com.semanticgallery.desktop", script)
+        self.assertIn("Library/Caches/com.semanticgallery.desktop", script)
+        self.assertIn("Library/WebKit/com.semanticgallery.desktop", script)
+        self.assertIn("Library/HTTPStorages/com.semanticgallery.desktop", script)
+        self.assertIn("pkill -f 'desktop_runtime.sidecar_main'", script)
+        self.assertIn("pkill -f 'semanticgallery_desktop'", script)
+        self.assertIn("SemanticGallery.app", script)
+        self.assertIn("Uninstall", script)
+
+    def test_prepare_release_stage_copies_app_and_uninstaller(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            app_path = root / "SemanticGallery.app"
+            uninstall_path = root / "Uninstall SemanticGallery.app"
+            stage_root = root / "stage"
+
+            (app_path / "Contents").mkdir(parents=True)
+            (app_path / "Contents" / "Info.plist").write_text("app")
+            (uninstall_path / "Contents").mkdir(parents=True)
+            (uninstall_path / "Contents" / "Info.plist").write_text("uninstall")
+
+            volume_root = self.module.prepare_release_stage(
+                app_path,
+                stage_root,
+                uninstall_helper_path=uninstall_path,
+            )
+
+            self.assertTrue((volume_root / "SemanticGallery.app" / "Contents" / "Info.plist").is_file())
+            self.assertTrue((volume_root / "Uninstall SemanticGallery.app" / "Contents" / "Info.plist").is_file())
+            self.assertTrue((volume_root / "Applications").is_symlink())
+
+    def test_ensure_icons_reuses_existing_icon_set_when_regeneration_fails(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tauri_dir = Path(temp_dir) / "src-tauri"
+            icons_dir = tauri_dir / "icons"
+            icons_dir.mkdir(parents=True)
+            for name in self.module.ICON_FILENAMES:
+                (icons_dir / name).write_text("icon")
+
+            with patch.object(self.module, "TAURI_DIR", tauri_dir):
+                with patch.object(
+                    self.module,
+                    "run",
+                    side_effect=subprocess.CalledProcessError(1, ["python", "generate_icons.py"]),
+                ):
+                    self.module.ensure_icons()
 
 
 if __name__ == "__main__":

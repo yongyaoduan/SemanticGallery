@@ -39,6 +39,7 @@ def build_service(workspace_root: Path, index_db_path: Path | None = None) -> De
     service = DesktopService(
         store=store,
         encoder_loader=encoder_loader,
+        thumbnails_dir=db_path.parent / "thumbs",
     )
     service.stage2_job = Stage2Job(
         ScriptStage2Runner(
@@ -57,13 +58,11 @@ def main():
     index_db_path = Path(args.index_db).expanduser().resolve() if args.index_db else None
 
     service = build_service(workspace_root, index_db_path=index_db_path)
-    app = build_app(service)
-
-    @app.on_event("startup")
     async def on_startup():
         service.start_watch_loop()
         print(f"READY http://{args.host}:{args.port}", flush=True)
 
+    app = build_app(service, on_startup=on_startup)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 
 

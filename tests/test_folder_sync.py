@@ -22,6 +22,33 @@ class FakeEncoder:
 
 
 class FolderSyncTests(unittest.TestCase):
+    def test_reconcile_emits_progress_updates(self):
+        with tempfile.TemporaryDirectory(prefix="sg-folder-sync-") as tmp_dir:
+            root = Path(tmp_dir)
+            folder = root / "folder"
+            folder.mkdir()
+            for index in range(3):
+                (folder / f"photo-{index}.jpg").write_bytes(f"image-{index}".encode("utf-8"))
+
+            store = IndexStore.connect(root / "index.sqlite3")
+            store.migrate()
+            encoder = FakeEncoder()
+            progress_events: list[dict[str, object]] = []
+
+            reconcile_folder(
+                store,
+                folder,
+                "stage1",
+                encoder,
+                emit_progress=progress_events.append,
+            )
+
+            self.assertEqual(progress_events[0]["phase"], "start")
+            self.assertEqual(progress_events[0]["total"], 3)
+            self.assertEqual(progress_events[-1]["phase"], "finish")
+            self.assertEqual(progress_events[-1]["current"], 3)
+            self.assertEqual(progress_events[-1]["embeddedCount"], 3)
+
     def test_reconcile_reuses_existing_embedding_for_duplicate_content(self):
         with tempfile.TemporaryDirectory(prefix="sg-folder-sync-") as tmp_dir:
             root = Path(tmp_dir)
@@ -114,6 +141,42 @@ class FolderSyncTests(unittest.TestCase):
             self.assertEqual(store.count_embeddings(), 1)
             view = ActiveSearchView.from_store(store, folder.resolve().as_posix(), "stage1")
             self.assertEqual(view.search(np.asarray([1.0, 0.0, 0.0], dtype=np.float32), limit=1), [image.resolve().as_posix()])
+
+    def test_reconcile_progress_counts_the_whole_folder_not_only_pending_files(self):
+        with tempfile.TemporaryDirectory(prefix="sg-folder-sync-") as tmp_dir:
+            root = Path(tmp_dir)
+            folder = root / "folder"
+            folder.mkdir()
+            for index in range(2):
+                (folder / f"photo-{index}.jpg").write_bytes(f"image-{index}".encode("utf-8"))
+
+            store = IndexStore.connect(root / "index.sqlite3")
+            store.migrate()
+            encoder = FakeEncoder()
+
+            reconcile_folder(store, folder, "stage1", encoder)
+
+            added_image = folder / "photo-2.jpg"
+            added_image.write_bytes(b"image-2")
+            progress_events: list[dict[str, object]] = []
+
+            reconcile_folder(
+                store,
+                folder,
+                "stage1",
+                encoder,
+                emit_progress=progress_events.append,
+            )
+
+            self.assertEqual(progress_events[0]["phase"], "start")
+            self.assertEqual(progress_events[0]["total"], 3)
+            self.assertEqual(progress_events[1]["phase"], "progress")
+            self.assertEqual(progress_events[1]["current"], 3)
+            self.assertEqual(progress_events[1]["total"], 3)
+            self.assertEqual(progress_events[1]["message"], "Indexing photo-2.jpg (3/3)")
+            self.assertEqual(progress_events[-1]["phase"], "finish")
+            self.assertEqual(progress_events[-1]["current"], 3)
+            self.assertEqual(progress_events[-1]["total"], 3)
 
 
 if __name__ == "__main__":

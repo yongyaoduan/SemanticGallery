@@ -22,7 +22,7 @@ import {
   toggleResultSelection
 } from "./workspace-selection";
 import { extractImageFileFromClipboardItems } from "./clipboard-image";
-import { buildIndexProgressSummary } from "./index-progress";
+import { buildIndexProgressSummary, buildStage2ProgressSummary } from "./index-progress";
 import { buildQueryPresentation } from "./query-presentation";
 import { nextSetupLogPinState, shouldAutoScrollSetupLogs } from "./setup-log-scroll";
 import { buildTrashConfirmationContent } from "./trash-confirmation";
@@ -87,7 +87,15 @@ const elements = {
   settingsIndexProgressTimeRow: document.getElementById("settings-index-progress-time-row"),
   settingsIndexProgressElapsed: document.getElementById("settings-index-progress-elapsed"),
   settingsIndexProgressRemaining: document.getElementById("settings-index-progress-remaining"),
+  settingsIndexProgressEta: document.getElementById("settings-index-progress-eta"),
   settingsIndexMessage: document.getElementById("settings-index-message"),
+  settingsStage2ProgressLabel: document.getElementById("settings-stage2-progress-label"),
+  settingsStage2ProgressBar: document.getElementById("settings-stage2-progress-bar"),
+  settingsStage2ProgressTimeRow: document.getElementById("settings-stage2-progress-time-row"),
+  settingsStage2ProgressElapsed: document.getElementById("settings-stage2-progress-elapsed"),
+  settingsStage2ProgressRemaining: document.getElementById("settings-stage2-progress-remaining"),
+  settingsStage2ProgressEta: document.getElementById("settings-stage2-progress-eta"),
+  settingsStage2Message: document.getElementById("settings-stage2-message"),
   lastTaskMessage: document.getElementById("last-task-message"),
   openUninstallerButton: document.getElementById("open-uninstaller-button"),
   resultsCountLabel: document.getElementById("results-count-label"),
@@ -254,6 +262,9 @@ async function connectRuntimeEvents() {
   runtimeEventSource = new EventSource(`${baseUrl}/api/events`);
   runtimeEventSource.addEventListener("folder-index-progress", (event) => {
     dispatch({ type: "index-progress", payload: JSON.parse(event.data) });
+  });
+  runtimeEventSource.addEventListener("stage2-progress", (event) => {
+    dispatch({ type: "stage2-progress", payload: JSON.parse(event.data) });
   });
   runtimeEventSource.addEventListener("folder-refresh-failed", (event) => {
     const payload = JSON.parse(event.data);
@@ -588,6 +599,7 @@ function render() {
   const showLaunchProgress = onboardingStep === "install";
   const showLaunchComplete = onboardingStep === "complete";
   const indexSummary = buildIndexProgressSummary(state.indexing);
+  const stage2Summary = buildStage2ProgressSummary(state.stage2);
 
   elements.launchScreen.hidden = !launchVisible;
   elements.workspaceScreen.hidden = !workspaceVisible;
@@ -638,20 +650,32 @@ function render() {
   elements.lastTaskMessage.textContent = state.lastTaskMessage || "";
   elements.settingsIndexProgressLabel.textContent = indexSummary.countLabel;
   elements.settingsIndexProgressBar.style.width = `${indexSummary.percent}%`;
-  const showProgressTiming = Boolean(indexSummary.elapsedLabel || indexSummary.remainingLabel);
+  const showProgressTiming = Boolean(indexSummary.elapsedLabel || indexSummary.remainingLabel || indexSummary.etaLabel);
   elements.settingsIndexProgressTimeRow.hidden = !showProgressTiming;
   elements.settingsIndexProgressTimeRow.style.display = showProgressTiming ? "flex" : "none";
   elements.settingsIndexProgressElapsed.textContent = indexSummary.elapsedLabel;
   elements.settingsIndexProgressRemaining.textContent = indexSummary.remainingLabel;
+  elements.settingsIndexProgressEta.textContent = indexSummary.etaLabel;
   elements.settingsIndexMessage.textContent = state.indexing.message;
+  elements.settingsStage2ProgressLabel.textContent = stage2Summary.countLabel;
+  elements.settingsStage2ProgressBar.style.width = `${stage2Summary.percent}%`;
+  const showStage2Timing = Boolean(stage2Summary.elapsedLabel || stage2Summary.remainingLabel || stage2Summary.etaLabel);
+  elements.settingsStage2ProgressTimeRow.hidden = !showStage2Timing;
+  elements.settingsStage2ProgressTimeRow.style.display = showStage2Timing ? "flex" : "none";
+  elements.settingsStage2ProgressElapsed.textContent = stage2Summary.elapsedLabel;
+  elements.settingsStage2ProgressRemaining.textContent = stage2Summary.remainingLabel;
+  elements.settingsStage2ProgressEta.textContent = stage2Summary.etaLabel;
+  elements.settingsStage2Message.textContent = stage2Summary.detailLabel || state.stage2.message;
 
-  elements.refreshButton.disabled = !state.activeFolder || state.refresh.isRunning;
+  const stage2Running = state.stage2.status === "running";
+  elements.refreshButton.disabled = !state.activeFolder || state.refresh.isRunning || stage2Running;
   elements.searchInput.disabled = !state.activeFolder;
   elements.resultLimit.disabled = !state.activeFolder;
   elements.selectionToggle.disabled = !state.results.length;
-  elements.chooseFolderButton.disabled = state.setup.status !== "ready" || state.indexing.status === "running";
+  elements.chooseFolderButton.disabled =
+    state.setup.status !== "ready" || state.indexing.status === "running" || stage2Running;
   elements.runStage2Button.disabled =
-    state.setup.status !== "ready" || !state.activeFolder || state.indexing.status === "running";
+    state.setup.status !== "ready" || !state.activeFolder || state.indexing.status === "running" || stage2Running;
   elements.searchInput.placeholder = state.activeFolder
     ? "Describe the photo you want to find"
     : "Choose a folder first";
@@ -754,7 +778,16 @@ async function chooseFolder() {
 
 async function runStage2() {
   try {
-    dispatch({ type: "task-message", payload: "Running Stage 2 adaptation..." });
+    dispatch({
+      type: "stage2-progress",
+      payload: {
+        status: "running",
+        phase: "validate",
+        current: 0,
+        total: 0,
+        message: "Checking the active folder for Stage 2 adaptation."
+      }
+    });
     const payload = await fetchJson("/api/stage2/run", { method: "POST" });
     dispatch({ type: "folder-selected", payload });
     dispatch({ type: "task-message", payload: payload.lastTaskMessage ?? "Stage 2 adaptation is ready." });
@@ -762,6 +795,14 @@ async function runStage2() {
       await rerunCurrentSearch();
     }
   } catch (error) {
+    dispatch({
+      type: "stage2-progress",
+      payload: {
+        status: "failed",
+        phase: "failed",
+        message: error.message
+      }
+    });
     dispatch({ type: "task-message", payload: error.message });
   }
 }

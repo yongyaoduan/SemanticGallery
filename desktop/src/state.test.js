@@ -33,6 +33,19 @@ describe("desktop state", () => {
         message: "Indexing cat.jpg (3/10)"
       }
     });
+    state = reduceAction(state, {
+      type: "stage2-progress",
+      payload: {
+        status: "running",
+        phase: "adapt",
+        current: 4,
+        total: 12,
+        startedAtMs: 5678,
+        elapsedSeconds: 30,
+        remainingSeconds: 60,
+        message: "Training epoch 1 of 1 · step 2 of 10"
+      }
+    });
     state = reduceAction(state, { type: "refresh-started" });
 
     expect(state.setup.currentStep).toBe(1);
@@ -49,6 +62,13 @@ describe("desktop state", () => {
     expect(state.indexing.elapsedSeconds).toBe(12);
     expect(state.indexing.remainingSeconds).toBe(28);
     expect(state.indexing.message).toBe("Indexing cat.jpg (3/10)");
+    expect(state.stage2.current).toBe(4);
+    expect(state.stage2.total).toBe(12);
+    expect(state.stage2.startedAtMs).toBe(5678);
+    expect(state.stage2.elapsedSeconds).toBe(30);
+    expect(state.stage2.remainingSeconds).toBe(60);
+    expect(state.stage2.message).toBe("Training epoch 1 of 1 · step 2 of 10");
+    expect(state.lastTaskMessage).toBe("Training epoch 1 of 1 · step 2 of 10");
     expect(state.refresh.isRunning).toBe(true);
   });
 });

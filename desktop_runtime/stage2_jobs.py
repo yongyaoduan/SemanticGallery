@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 from pathlib import Path
 from typing import Callable, Protocol
@@ -40,9 +41,23 @@ class Stage2Job:
 
 
 class ScriptStage2Runner:
-    def __init__(self, root_dir: Path, emit: Callable[[str], None]):
+    _EPOCHS_RE = re.compile(r"^epochs=(?P<epochs>\d+)$")
+    _TOTAL_STEPS_RE = re.compile(r"^epoch=(?P<epoch>\d+)\s+total_steps=(?P<total>\d+)\s+mode=stage2$")
+    _STEP_RE = re.compile(r"^epoch=(?P<epoch>\d+)\s+step=(?P<step>\d+)/(?P<total>\d+)\b")
+    _VALIDATION_RE = re.compile(r"^epoch=(?P<epoch>\d+)\s+validation_start=true$")
+
+    def __init__(
+        self,
+        root_dir: Path,
+        emit: Callable[[str], None],
+        emit_progress: Callable[[dict[str, object]], None] | None = None,
+    ):
         self.root_dir = root_dir.expanduser().resolve()
         self.emit = emit
+        self.emit_progress = emit_progress
+        self._epochs = 1
+        self._epoch_totals: dict[int, int] = {}
+        self._stage2_total_units = 0
 
     def _script_path(self, name: str) -> Path:
         return self.root_dir / "scripts" / name
@@ -62,6 +77,91 @@ class ScriptStage2Runner:
         env["PATH"] = os.pathsep.join([uv_dir, *[part for part in existing_parts if part != uv_dir]])
         env["SEMANTICGALLERY_UV_BINARY"] = uv_path.as_posix()
         return env
+
+    def _publish_progress(self, payload: dict[str, object]) -> None:
+        if self.emit_progress is None:
+            return
+        self.emit_progress(payload)
+
+    def _reset_training_progress(self) -> None:
+        self._epochs = 1
+        self._epoch_totals = {}
+        self._stage2_total_units = 0
+
+    def _estimated_total_train_steps(self, fallback_total: int | None = None) -> int:
+        if not self._epoch_totals and not fallback_total:
+            return 0
+
+        representative_total = fallback_total or max(self._epoch_totals.values(), default=0)
+        estimated_steps = 0
+        for epoch in range(1, self._epochs + 1):
+            estimated_steps += self._epoch_totals.get(epoch, representative_total)
+        return estimated_steps
+
+    def _stage2_units_total(self, fallback_total: int | None = None) -> int:
+        estimated_train_steps = self._estimated_total_train_steps(fallback_total)
+        if estimated_train_steps <= 0:
+            return self._stage2_total_units
+        self._stage2_total_units = 1 + estimated_train_steps + self._epochs + 1
+        return self._stage2_total_units
+
+    def _completed_train_steps_before(self, epoch: int) -> int:
+        return sum(self._epoch_totals.get(index, 0) for index in range(1, epoch))
+
+    def _handle_adapt_progress_line(self, line: str) -> None:
+        if match := self._EPOCHS_RE.match(line):
+            self._epochs = max(1, int(match.group("epochs")))
+            return
+
+        if match := self._TOTAL_STEPS_RE.match(line):
+            epoch = int(match.group("epoch"))
+            total_steps = int(match.group("total"))
+            self._epoch_totals[epoch] = total_steps
+            total_units = self._stage2_units_total(total_steps)
+            current_units = 1 + self._completed_train_steps_before(epoch) + max(0, epoch - 1)
+            self._publish_progress(
+                {
+                    "status": "running",
+                    "phase": "adapt",
+                    "current": current_units,
+                    "total": total_units,
+                    "message": f"Training epoch {epoch} of {self._epochs} · step 0 of {total_steps}",
+                }
+            )
+            return
+
+        if match := self._STEP_RE.match(line):
+            epoch = int(match.group("epoch"))
+            step = int(match.group("step"))
+            total_steps = int(match.group("total"))
+            self._epoch_totals.setdefault(epoch, total_steps)
+            total_units = self._stage2_units_total(total_steps)
+            current_units = 1 + self._completed_train_steps_before(epoch) + max(0, epoch - 1) + step
+            self._publish_progress(
+                {
+                    "status": "running",
+                    "phase": "adapt",
+                    "current": current_units,
+                    "total": total_units,
+                    "message": f"Training epoch {epoch} of {self._epochs} · step {step} of {total_steps}",
+                }
+            )
+            return
+
+        if match := self._VALIDATION_RE.match(line):
+            epoch = int(match.group("epoch"))
+            epoch_total = self._epoch_totals.get(epoch, 0)
+            total_units = self._stage2_units_total(epoch_total or None)
+            current_units = 1 + self._completed_train_steps_before(epoch) + epoch_total + epoch
+            self._publish_progress(
+                {
+                    "status": "running",
+                    "phase": "validate",
+                    "current": current_units,
+                    "total": total_units,
+                    "message": f"Validating epoch {epoch} of {self._epochs}",
+                }
+            )
 
     def _run_script(self, script_name: str, env: dict[str, str]) -> None:
         command = ["/bin/bash", self._script_path(script_name).as_posix()]
@@ -89,6 +189,8 @@ class ScriptStage2Runner:
             if normalized:
                 last_log_line = normalized
             self.emit(normalized)
+            if script_name == "adapt_best.sh" and normalized:
+                self._handle_adapt_progress_line(normalized)
 
         returncode = proc.wait()
         if returncode != 0:
@@ -118,8 +220,38 @@ class ScriptStage2Runner:
         )
         env = self._prepare_runtime_env(env)
 
+        self._reset_training_progress()
+        self._publish_progress(
+            {
+                "status": "running",
+                "phase": "prepare",
+                "current": 0,
+                "total": 0,
+                "message": "Preparing private adaptation data.",
+            }
+        )
         self._run_script("prepare_data.sh", env)
+        self._publish_progress(
+            {
+                "status": "running",
+                "phase": "prepare",
+                "current": 1,
+                "total": 1,
+                "message": "Private adaptation data is ready.",
+            }
+        )
         self._run_script("adapt_best.sh", env)
+
+        total_units = self._stage2_total_units or 3
+        self._publish_progress(
+            {
+                "status": "running",
+                "phase": "finalize",
+                "current": max(1, total_units - 1),
+                "total": total_units,
+                "message": "Finalizing Stage 2 weights.",
+            }
+        )
 
         weights_path = final_run_dir / "weights.safetensors"
         if not weights_path.is_file():

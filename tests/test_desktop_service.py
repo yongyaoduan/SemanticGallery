@@ -118,6 +118,47 @@ class DesktopServiceTests(unittest.TestCase):
             self.assertEqual(service.runtime_status()["indexing"]["elapsedSeconds"], 24)
             self.assertEqual(service.runtime_status()["indexing"]["remainingSeconds"], 0)
 
+    def test_stage2_progress_tracks_elapsed_and_remaining_time(self):
+        with tempfile.TemporaryDirectory(prefix="sg-desktop-service-") as tmp_dir:
+            root = Path(tmp_dir)
+            service = self._build_service(root)
+
+            with patch("desktop_runtime.service.time.time", return_value=1_700_000_000), patch(
+                "desktop_runtime.service.time.monotonic",
+                side_effect=[20.0, 20.0, 32.0, 41.0],
+            ):
+                service._publish_stage2_progress(
+                    {
+                        "status": "running",
+                        "phase": "prepare",
+                        "current": 0,
+                        "total": 0,
+                        "message": "Preparing private adaptation data.",
+                    }
+                )
+                service._publish_stage2_progress(
+                    {
+                        "status": "running",
+                        "phase": "adapt",
+                        "current": 6,
+                        "total": 12,
+                        "message": "Training epoch 1 of 1 · step 4 of 10",
+                    }
+                )
+                service._publish_stage2_progress(
+                    {
+                        "status": "ready",
+                        "phase": "finish",
+                        "current": 12,
+                        "total": 12,
+                        "message": "Stage 2 adaptation is ready.",
+                    }
+                )
+
+            self.assertEqual(service.runtime_status()["stage2"]["startedAtMs"], 1_700_000_000_000)
+            self.assertEqual(service.runtime_status()["stage2"]["elapsedSeconds"], 21)
+            self.assertEqual(service.runtime_status()["stage2"]["remainingSeconds"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

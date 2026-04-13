@@ -111,8 +111,23 @@ class DesktopService:
         },
         init=False,
     )
+    _stage2_progress: dict[str, object] = field(
+        default_factory=lambda: {
+            "status": "idle",
+            "phase": "idle",
+            "current": 0,
+            "total": 0,
+            "startedAtMs": None,
+            "elapsedSeconds": 0,
+            "remainingSeconds": None,
+            "message": "Stage 2 adaptation is idle.",
+        },
+        init=False,
+    )
     _index_started_at_monotonic: float | None = field(default=None, init=False, repr=False)
     _index_started_at_ms: int | None = field(default=None, init=False, repr=False)
+    _stage2_started_at_monotonic: float | None = field(default=None, init=False, repr=False)
+    _stage2_started_at_ms: int | None = field(default=None, init=False, repr=False)
     _lock: RLock = field(default_factory=RLock, init=False, repr=False)
     _active_search_view: ActiveSearchView = field(
         default_factory=lambda: ActiveSearchView(paths=[], matrix=np.zeros((0, 0), dtype=np.float32)),
@@ -131,6 +146,7 @@ class DesktopService:
                 "lastTaskMessage": self.last_task_message,
                 "indexedImageCount": len(self._active_search_view.paths),
                 "indexing": dict(self._index_progress),
+                "stage2": dict(self._stage2_progress),
             }
 
     def attach_event_loop(self, loop: asyncio.AbstractEventLoop) -> None:
@@ -149,9 +165,13 @@ class DesktopService:
                 previous_encoder = self.encoder
                 previous_encoder_key = self._loaded_encoder_key
                 previous_view = self._active_search_view
+                previous_stage2_progress = dict(self._stage2_progress)
+                previous_stage2_started_at_monotonic = self._stage2_started_at_monotonic
+                previous_stage2_started_at_ms = self._stage2_started_at_ms
 
                 self.active_folder = resolved
                 self.active_encoder_signature = self._resolve_folder_signature(resolved)
+                self._reset_stage2_progress_for_signature(self.active_encoder_signature)
 
             try:
                 return self.refresh_active_folder(lightweight=False)
@@ -163,6 +183,9 @@ class DesktopService:
                     self.encoder = previous_encoder
                     self._loaded_encoder_key = previous_encoder_key
                     self._active_search_view = previous_view
+                    self._stage2_progress = previous_stage2_progress
+                    self._stage2_started_at_monotonic = previous_stage2_started_at_monotonic
+                    self._stage2_started_at_ms = previous_stage2_started_at_ms
                 raise
             except DesktopServiceError as exc:
                 with self._lock:
@@ -172,6 +195,9 @@ class DesktopService:
                     self.encoder = previous_encoder
                     self._loaded_encoder_key = previous_encoder_key
                     self._active_search_view = previous_view
+                    self._stage2_progress = previous_stage2_progress
+                    self._stage2_started_at_monotonic = previous_stage2_started_at_monotonic
+                    self._stage2_started_at_ms = previous_stage2_started_at_ms
                     self.last_task_message = str(exc)
                 raise DesktopServiceError(f"Failed to index the selected folder: {exc}") from exc
             except Exception as exc:
@@ -182,6 +208,9 @@ class DesktopService:
                     self.encoder = previous_encoder
                     self._loaded_encoder_key = previous_encoder_key
                     self._active_search_view = previous_view
+                    self._stage2_progress = previous_stage2_progress
+                    self._stage2_started_at_monotonic = previous_stage2_started_at_monotonic
+                    self._stage2_started_at_ms = previous_stage2_started_at_ms
                     self.last_task_message = str(exc)
                 raise DesktopServiceError(f"Failed to index the selected folder: {exc}") from exc
 
@@ -285,6 +314,15 @@ class DesktopService:
                 self._require_indexing_components()
                 previous_encoder = self.encoder
                 previous_encoder_key = self._loaded_encoder_key
+                self._publish_stage2_progress(
+                    {
+                        "status": "running",
+                        "phase": "validate",
+                        "current": 0,
+                        "total": 0,
+                        "message": "Checking the active folder for Stage 2 adaptation.",
+                    }
+                )
 
             try:
                 next_signature = self.stage2_job.run(folder)
@@ -292,16 +330,39 @@ class DesktopService:
                     next_encoder = self._load_encoder(folder, next_signature)
                 reconcile_folder(self.store, folder, next_signature, next_encoder)
                 next_view = ActiveSearchView.from_store(self.store, folder.as_posix(), next_signature)
-            except (DesktopServiceError, Stage2Error):
+            except (DesktopServiceError, Stage2Error) as exc:
                 with self._lock:
                     self.encoder = previous_encoder
                     self._loaded_encoder_key = previous_encoder_key
+                    self.last_task_message = str(exc)
+                    current = int(self._stage2_progress.get("current", 0) or 0)
+                    total = int(self._stage2_progress.get("total", 0) or 0)
+                    self._publish_stage2_progress(
+                        {
+                            "status": "failed",
+                            "phase": "failed",
+                            "current": current,
+                            "total": max(total, current),
+                            "message": str(exc),
+                        }
+                    )
                 raise
             except Exception as exc:
                 with self._lock:
                     self.encoder = previous_encoder
                     self._loaded_encoder_key = previous_encoder_key
                     self.last_task_message = str(exc)
+                    current = int(self._stage2_progress.get("current", 0) or 0)
+                    total = int(self._stage2_progress.get("total", 0) or 0)
+                    self._publish_stage2_progress(
+                        {
+                            "status": "failed",
+                            "phase": "failed",
+                            "current": current,
+                            "total": max(total, current),
+                            "message": str(exc),
+                        }
+                    )
                 raise DesktopServiceError(f"Failed to finish Stage 2 adaptation: {exc}") from exc
             else:
                 with self._lock:
@@ -313,6 +374,18 @@ class DesktopService:
                 self._active_search_view = next_view
                 self._active_scan_signature = self._scan_folder(folder).scan_signature
                 self.last_task_message = "Stage 2 adaptation is ready."
+                completed_total = int(self._stage2_progress.get("total", 0) or 0)
+                if completed_total <= 0:
+                    completed_total = max(1, int(self._stage2_progress.get("current", 0) or 0), 1)
+                self._publish_stage2_progress(
+                    {
+                        "status": "ready",
+                        "phase": "finish",
+                        "current": completed_total,
+                        "total": completed_total,
+                        "message": "Stage 2 adaptation is ready.",
+                    }
+                )
             self.publish_event(
                 "stage2-complete",
                 {
@@ -466,6 +539,60 @@ class DesktopService:
             self.last_task_message = str(next_payload.get("message", self.last_task_message))
         self.publish_event("folder-index-progress", next_payload)
 
+    def _publish_stage2_progress(self, payload: dict[str, object]) -> None:
+        with self._lock:
+            status = str(payload.get("status", self._stage2_progress.get("status", "idle")))
+            phase = str(payload.get("phase", "idle"))
+            next_payload = dict(payload)
+
+            if status == "running":
+                if phase == "prepare" or self._stage2_started_at_monotonic is None or self._stage2_started_at_ms is None:
+                    self._stage2_started_at_monotonic = time.monotonic()
+                    self._stage2_started_at_ms = int(time.time() * 1000)
+                elapsed_seconds = max(0, int(round(time.monotonic() - self._stage2_started_at_monotonic)))
+                current = int(next_payload.get("current", 0) or 0)
+                total = int(next_payload.get("total", 0) or 0)
+                remaining_seconds = next_payload.get("remainingSeconds")
+                if remaining_seconds is None:
+                    if total > 0 and current > 0 and total >= current:
+                        remaining_seconds = int(round((elapsed_seconds / current) * (total - current)))
+                else:
+                    remaining_seconds = int(remaining_seconds)
+                next_payload.update(
+                    {
+                        "startedAtMs": self._stage2_started_at_ms,
+                        "elapsedSeconds": elapsed_seconds,
+                        "remainingSeconds": remaining_seconds,
+                    }
+                )
+            elif status == "ready":
+                elapsed_seconds = 0
+                if self._stage2_started_at_monotonic is not None:
+                    elapsed_seconds = max(0, int(round(time.monotonic() - self._stage2_started_at_monotonic)))
+                next_payload.update(
+                    {
+                        "startedAtMs": self._stage2_started_at_ms,
+                        "elapsedSeconds": elapsed_seconds,
+                        "remainingSeconds": 0,
+                    }
+                )
+                self._stage2_started_at_monotonic = None
+                self._stage2_started_at_ms = None
+            else:
+                next_payload.update(
+                    {
+                        "startedAtMs": None,
+                        "elapsedSeconds": 0,
+                        "remainingSeconds": None,
+                    }
+                )
+                self._stage2_started_at_monotonic = None
+                self._stage2_started_at_ms = None
+
+            self._stage2_progress = next_payload
+            self.last_task_message = str(next_payload.get("message", self.last_task_message))
+        self.publish_event("stage2-progress", next_payload)
+
     async def iter_events(self):
         while True:
             event = await self._event_queue.get()
@@ -488,6 +615,35 @@ class DesktopService:
     def start_watch_loop(self) -> None:
         if self._watch_task is None or self._watch_task.done():
             self._watch_task = asyncio.create_task(self.watch_active_folder())
+
+    def _reset_stage2_progress_for_signature(self, encoder_signature: str) -> None:
+        if encoder_signature != "stage1":
+            self._stage2_progress = {
+                "status": "ready",
+                "phase": "finish",
+                "current": 1,
+                "total": 1,
+                "startedAtMs": None,
+                "elapsedSeconds": 0,
+                "remainingSeconds": 0,
+                "message": "Stage 2 adaptation is ready.",
+            }
+            self._stage2_started_at_monotonic = None
+            self._stage2_started_at_ms = None
+            return
+
+        self._stage2_progress = {
+            "status": "idle",
+            "phase": "idle",
+            "current": 0,
+            "total": 0,
+            "startedAtMs": None,
+            "elapsedSeconds": 0,
+            "remainingSeconds": None,
+            "message": "Stage 2 adaptation is idle.",
+        }
+        self._stage2_started_at_monotonic = None
+        self._stage2_started_at_ms = None
 
     def _require_active_folder(self) -> Path:
         if self.active_folder is None:

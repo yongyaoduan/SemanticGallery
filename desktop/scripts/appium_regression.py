@@ -8,6 +8,7 @@ import shutil
 import socket
 import subprocess
 import tempfile
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -68,6 +69,9 @@ def appium_server():
     port = find_free_port()
     env = os.environ.copy()
     env["APPIUM_HOME"] = str(APPIUM_HOME)
+    env["MAX_TRAIN_STEPS"] = "1"
+    env["MAX_VAL_STEPS"] = "1"
+    env["MAX_EPOCHS_STAGE2"] = "1"
     command = [str(APPIUM_BIN), "server", "--port", str(port), "--base-path", "/"]
     process = subprocess.Popen(
         command,
@@ -214,6 +218,15 @@ def run_command(command: list[str]) -> None:
     subprocess.run(command, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+def press_key_code(key_code: int) -> None:
+    subprocess.run(
+        ["osascript", "-e", f'tell application "System Events" to key code {key_code}'],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
 @contextmanager
 def temporarily_remove_onboarding_marker():
     original_bytes = ONBOARDING_MARKER.read_bytes() if ONBOARDING_MARKER.is_file() else None
@@ -299,6 +312,18 @@ def wait_for_folder_ready(base_url: str, expected_folder: Path, timeout: float =
             return payload
         time.sleep(0.5)
     raise RuntimeError(f"The folder index did not finish for {expected_folder}.")
+
+
+def wait_for_stage2_status(base_url: str, expected_status: str | tuple[str, ...], timeout: float = 600.0) -> dict:
+    expected = (expected_status,) if isinstance(expected_status, str) else expected_status
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        payload = fetch_json(f"{base_url}/api/runtime/status", timeout=10.0)
+        stage2 = payload.get("stage2", {})
+        if stage2.get("status") in expected:
+            return payload
+        time.sleep(0.5)
+    raise RuntimeError(f"Stage 2 did not reach status {expected!r}.")
 
 
 def create_temp_gallery(root: Path, file_count: int = 400) -> Path:
@@ -477,6 +502,43 @@ def main() -> None:
                 indexed_count = ready_status.get("indexedImageCount")
                 if indexed_count != 400:
                     raise RuntimeError(f"The temporary gallery indexed {indexed_count} images instead of 400.")
+
+                stage2_response: dict[str, object] = {}
+                stage2_error: list[Exception] = []
+
+                def run_stage2() -> None:
+                    try:
+                        stage2_response.update(
+                            fetch_json(
+                                f"{base_url}/api/stage2/run",
+                                method="POST",
+                                timeout=900.0,
+                            )
+                        )
+                    except Exception as exc:  # pragma: no cover - exercised by desktop regression
+                        stage2_error.append(exc)
+
+                stage2_thread = threading.Thread(target=run_stage2, daemon=True)
+                stage2_thread.start()
+                wait_for_stage2_status(base_url, ("running", "ready"), timeout=120.0)
+                activate_app()
+                press_key_code(121)
+                time.sleep(1.0)
+                session.screenshot(screenshots_dir / "settings-stage2-running.png")
+                stage2_ready = wait_for_stage2_status(base_url, "ready", timeout=900.0)
+                stage2_thread.join(timeout=10.0)
+                if stage2_thread.is_alive():
+                    raise RuntimeError("The Stage 2 request thread did not finish in time.")
+                if stage2_error:
+                    raise stage2_error[0]
+                activate_app()
+                press_key_code(121)
+                time.sleep(1.0)
+                session.screenshot(screenshots_dir / "settings-stage2-ready.png")
+                if stage2_ready.get("activeEncoderSignature") == "stage1":
+                    raise RuntimeError("Stage 2 completed without switching the active encoder signature.")
+                press_key_code(116)
+                time.sleep(0.5)
 
                 try:
                     session.click("//*[@title='Back to search']")

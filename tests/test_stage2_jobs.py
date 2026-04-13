@@ -140,6 +140,61 @@ class Stage2JobTests(unittest.TestCase):
             self.assertEqual(emitted, ["prepare line 1", "prepare line 2", "adapt line 1", "adapt line 2"])
             self.assertEqual(signature, sha256_file(weights_path))
 
+    def test_script_runner_emits_structured_progress_updates(self):
+        with tempfile.TemporaryDirectory(prefix="sg-stage2-runner-") as tmp_dir:
+            root_dir = Path(tmp_dir)
+            folder = root_dir / "gallery"
+            folder.mkdir()
+            for index in range(100):
+                (folder / f"image-{index}.jpg").write_bytes(b"x")
+
+            progress_events: list[dict[str, object]] = []
+            gallery_key = gallery_artifact_key(folder)
+            weights_path = root_dir.expanduser().resolve() / "logs" / "semanticgallery_private_data_adapted" / gallery_key / "weights.safetensors"
+
+            def fake_popen(command, *, cwd, env, stdout, stderr, text, bufsize):
+                del cwd, env, stdout, stderr, text, bufsize
+                if command[-1].endswith("adapt_best.sh"):
+                    weights_path.parent.mkdir(parents=True, exist_ok=True)
+                    weights_path.write_bytes(b"stage2-weights")
+                    return FakeProcess(
+                        stdout_text=(
+                            "training_start=true\n"
+                            "epochs=1\n"
+                            "epoch=1 total_steps=4 mode=stage2\n"
+                            "epoch=1 step=1/4 loss=0.4 step_ms=500.0 batch=4\n"
+                            "epoch=1 step=4/4 loss=0.2 step_ms=450.0 batch=4\n"
+                            "epoch=1 validation_start=true\n"
+                            "epoch=1 summary train_loss=0.3 val_loss=0.2 train_steps=4 val_steps=1\n"
+                            "weights=/tmp/fake-weights\n"
+                        )
+                    )
+                return FakeProcess(stdout_text="prepare line 1\nprepare line 2\n")
+
+            with patch("subprocess.Popen", side_effect=fake_popen):
+                runner = ScriptStage2Runner(
+                    root_dir,
+                    emit=lambda _line: None,
+                    emit_progress=progress_events.append,
+                )
+                runner.run(folder)
+
+            self.assertGreaterEqual(len(progress_events), 6)
+            self.assertEqual(progress_events[0]["phase"], "prepare")
+            self.assertEqual(progress_events[0]["status"], "running")
+            self.assertEqual(progress_events[1]["phase"], "prepare")
+            self.assertEqual(progress_events[1]["current"], 1)
+            self.assertEqual(progress_events[1]["message"], "Private adaptation data is ready.")
+            self.assertEqual(progress_events[2]["phase"], "adapt")
+            self.assertEqual(progress_events[2]["total"], 7)
+            self.assertEqual(progress_events[2]["current"], 1)
+            self.assertEqual(progress_events[3]["message"], "Training epoch 1 of 1 · step 1 of 4")
+            self.assertEqual(progress_events[3]["current"], 2)
+            self.assertEqual(progress_events[4]["message"], "Training epoch 1 of 1 · step 4 of 4")
+            self.assertEqual(progress_events[4]["current"], 5)
+            self.assertEqual(progress_events[5]["phase"], "validate")
+            self.assertEqual(progress_events[5]["current"], 6)
+
     def test_script_runner_prepends_bundled_uv_directory_to_path(self):
         with tempfile.TemporaryDirectory(prefix="sg-stage2-runner-") as tmp_dir:
             root_dir = Path(tmp_dir)

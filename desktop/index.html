@@ -265,6 +265,7 @@
               <div id="settings-index-progress-time-row" class="settings-progress-time" hidden>
                 <span id="settings-index-progress-elapsed"></span>
                 <span id="settings-index-progress-remaining"></span>
+                <span id="settings-index-progress-eta"></span>
               </div>
               <p id="settings-index-message" class="settings-help">Idle.</p>
             </div>
@@ -274,6 +275,21 @@
             <p class="status-label">Stage 2 adaptation</p>
             <p class="settings-help">Requires at least 100 supported images.</p>
             <button id="run-stage2-button" class="secondary-button" type="button">Run Stage 2</button>
+            <div class="settings-progress">
+              <div class="panel-header">
+                <span>Adaptation progress</span>
+                <span id="settings-stage2-progress-label">0%</span>
+              </div>
+              <div class="progress-track">
+                <span id="settings-stage2-progress-bar"></span>
+              </div>
+              <div id="settings-stage2-progress-time-row" class="settings-progress-time" hidden>
+                <span id="settings-stage2-progress-elapsed"></span>
+                <span id="settings-stage2-progress-remaining"></span>
+                <span id="settings-stage2-progress-eta"></span>
+              </div>
+              <p id="settings-stage2-message" class="settings-help">Stage 2 adaptation is idle.</p>
+            </div>
           </section>
 
           <section class="settings-card">

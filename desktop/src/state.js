@@ -91,6 +91,16 @@ export function createInitialState() {
       reusedCount: 0,
       message: "No indexing task is running."
     },
+    stage2: {
+      status: "idle",
+      phase: "idle",
+      current: 0,
+      total: 0,
+      startedAtMs: null,
+      elapsedSeconds: 0,
+      remainingSeconds: null,
+      message: "Stage 2 adaptation is idle."
+    },
     refresh: {
       isRunning: false,
       label: "Idle"
@@ -194,7 +204,8 @@ export function reduceAction(state, action) {
       activeFolder: action.payload.activeFolder,
       activeEncoderSignature: action.payload.activeEncoderSignature,
       lastTaskMessage: action.payload.lastTaskMessage ?? state.lastTaskMessage,
-      indexing: action.payload.indexing ?? state.indexing
+      indexing: action.payload.indexing ?? state.indexing,
+      stage2: action.payload.stage2 ?? state.stage2
     };
   }
 
@@ -205,6 +216,7 @@ export function reduceAction(state, action) {
       activeEncoderSignature: action.payload.activeEncoderSignature ?? state.activeEncoderSignature,
       lastTaskMessage: action.payload.lastTaskMessage ?? state.lastTaskMessage,
       indexing: action.payload.indexing ?? state.indexing,
+      stage2: action.payload.stage2 ?? state.stage2,
       results: []
     };
   }
@@ -224,6 +236,17 @@ export function reduceAction(state, action) {
     return {
       ...state,
       results: action.payload.results ?? []
+    };
+  }
+
+  if (action.type === "stage2-progress") {
+    return {
+      ...state,
+      stage2: {
+        ...state.stage2,
+        ...(action.payload ?? {})
+      },
+      lastTaskMessage: action.payload?.message ?? state.lastTaskMessage
     };
   }
 

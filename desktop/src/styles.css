@@ -224,6 +224,7 @@ button:disabled {
 
 .progress-track,
 .setup-step-track {
+  height: 12px;
   overflow: hidden;
   border-radius: 999px;
   background: rgba(31, 108, 100, 0.1);
@@ -790,12 +791,22 @@ button:disabled {
 
 .settings-progress {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   margin-top: 8px;
   padding: 16px;
   border-radius: 20px;
   border: 1px solid rgba(108, 92, 72, 0.12);
   background: rgba(255, 252, 247, 0.72);
+}
+
+.settings-progress .progress-track {
+  height: 14px;
+  background: linear-gradient(180deg, rgba(31, 108, 100, 0.12), rgba(31, 108, 100, 0.06));
+  box-shadow: inset 0 0 0 1px rgba(31, 108, 100, 0.08);
+}
+
+.settings-progress .progress-track span {
+  box-shadow: 0 0 18px rgba(31, 108, 100, 0.18);
 }
 
 .settings-progress-time {

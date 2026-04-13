@@ -45,6 +45,7 @@ def build_service(workspace_root: Path, index_db_path: Path | None = None) -> De
         ScriptStage2Runner(
             runtime_root,
             emit=lambda line: service.publish_event("stage2-log", {"line": line}),
+            emit_progress=lambda payload: service._publish_stage2_progress(payload),
         )
     )
     service.setup_status = "ready"

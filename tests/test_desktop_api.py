@@ -212,6 +212,62 @@ class DesktopApiTests(unittest.TestCase):
             self.assertEqual(response.json()["setupStatus"], "ready")
             self.assertEqual(response.json()["activeEncoderSignature"], "stage1")
 
+    def test_activate_folder_sets_the_active_folder_without_reindexing(self):
+        with tempfile.TemporaryDirectory(prefix="sg-desktop-api-") as tmp_dir:
+            root = Path(tmp_dir)
+            folder = root / "gallery"
+            folder.mkdir()
+            client = TestClient(build_app(self._build_service(root)))
+
+            response = client.post(
+                "/api/folders/activate",
+                json={"folderPath": folder.as_posix(), "encoderSignature": "stage1"},
+            )
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.json()
+            self.assertEqual(payload["activeFolder"], folder.resolve().as_posix())
+            self.assertEqual(payload["activeEncoderSignature"], "stage1")
+
+    def test_encode_text_endpoint_returns_a_vector_for_the_selected_signature(self):
+        with tempfile.TemporaryDirectory(prefix="sg-desktop-api-") as tmp_dir:
+            root = Path(tmp_dir)
+            folder = root / "gallery"
+            folder.mkdir()
+            client = TestClient(build_app(self._build_service(root)))
+
+            response = client.post(
+                "/api/encode/text",
+                json={
+                    "folderPath": folder.as_posix(),
+                    "encoderSignature": "stage1",
+                    "queryText": "cat",
+                },
+            )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["vector"], [1.0, 0.0])
+
+    def test_encode_image_path_endpoint_returns_a_vector_for_the_selected_signature(self):
+        with tempfile.TemporaryDirectory(prefix="sg-desktop-api-") as tmp_dir:
+            root = Path(tmp_dir)
+            folder = root / "gallery"
+            image_path = folder / "cat.jpg"
+            self._write_image(image_path)
+            client = TestClient(build_app(self._build_service(root)))
+
+            response = client.post(
+                "/api/encode/image-path",
+                json={
+                    "folderPath": folder.as_posix(),
+                    "encoderSignature": "stage1",
+                    "imagePath": image_path.as_posix(),
+                },
+            )
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["vector"], [1.0, 0.0])
+
     def test_runtime_status_preflight_allows_tauri_webview_requests(self):
         with tempfile.TemporaryDirectory(prefix="sg-desktop-api-") as tmp_dir:
             root = Path(tmp_dir)

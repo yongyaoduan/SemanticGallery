@@ -1,18 +1,29 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({
+  convertFileSrc: vi.fn((path) => `asset://localhost/${path}`),
   invoke: vi.fn()
 }));
 
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 
-import { fetchJson, openUninstaller, resetSidecarBaseUrl, resolveSidecarUrl } from "./api-client";
+import {
+  desktopAutomationToolsEnabled,
+  desktopDeleteImages,
+  desktopSearchText,
+  fetchJson,
+  openUninstaller,
+  resetSidecarBaseUrl,
+  resolveSidecarUrl,
+  toAssetUrl
+} from "./api-client";
 
 describe("api client", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     resetSidecarBaseUrl();
     global.fetch = vi.fn();
+    convertFileSrc.mockImplementation((path) => `asset://localhost/${path}`);
     invoke.mockResolvedValue("http://127.0.0.1:60538");
   });
 
@@ -84,5 +95,32 @@ describe("api client", () => {
 
   it("resolves relative media paths against the sidecar base url", async () => {
     await expect(resolveSidecarUrl("/thumbs/cat.jpg")).resolves.toBe("http://127.0.0.1:60538/thumbs/cat.jpg");
+  });
+
+  it("routes text search through the Rust desktop command bridge", async () => {
+    await desktopSearchText("cat", 25);
+
+    expect(invoke).toHaveBeenCalledWith("desktop_search_text", {
+      args: { queryText: "cat", limit: 25 }
+    });
+  });
+
+  it("reads the desktop automation tools flag through the Rust command bridge", async () => {
+    await desktopAutomationToolsEnabled();
+
+    expect(invoke).toHaveBeenCalledWith("desktop_automation_tools_enabled");
+  });
+
+  it("routes batch delete through the Rust desktop command bridge", async () => {
+    await desktopDeleteImages(["cat.jpg", "dog.jpg"]);
+
+    expect(invoke).toHaveBeenCalledWith("desktop_delete_images", {
+      args: { paths: ["cat.jpg", "dog.jpg"] }
+    });
+  });
+
+  it("converts local file paths into Tauri asset urls", () => {
+    expect(toAssetUrl("/Users/example/photo.jpg")).toBe("asset://localhost//Users/example/photo.jpg");
+    expect(convertFileSrc).toHaveBeenCalledWith("/Users/example/photo.jpg");
   });
 });

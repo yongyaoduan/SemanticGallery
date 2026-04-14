@@ -5,11 +5,22 @@ import { listen } from "@tauri-apps/api/event";
 import {
   cancelRuntimeSetup,
   completeOnboarding,
-  fetchJson,
+  desktopAutomationToolsEnabled,
+  desktopDeleteImage,
+  desktopDeleteImages,
+  desktopMetadata,
+  desktopRefreshFolder,
+  desktopRunStage2,
+  desktopRuntimeStatus,
+  desktopSearchSimilar,
+  desktopSearchText,
+  desktopSearchUploadedImage,
+  desktopSelectFolder,
   openUninstaller,
   pickFolder,
   resetSidecarBaseUrl,
   sidecarBaseUrl,
+  toAssetUrl,
   runtimeBootstrapState,
   startRuntime
 } from "./api-client";
@@ -23,15 +34,19 @@ import {
 } from "./workspace-selection";
 import { extractImageFileFromClipboardItems } from "./clipboard-image";
 import { buildIndexProgressSummary, buildStage2ProgressSummary } from "./index-progress";
+import { attachImageFallback, buildImageSourceCandidates } from "./image-fallback";
 import { buildQueryPresentation } from "./query-presentation";
 import { nextSetupLogPinState, shouldAutoScrollSetupLogs } from "./setup-log-scroll";
+import { resolveStage2LaunchGuard } from "./stage2-guard";
 import { buildTrashConfirmationContent } from "./trash-confirmation";
 
 const SETUP_PROGRESS_EVENT = "semanticgallery://setup-progress";
 const SETUP_LOG_EVENT = "semanticgallery://setup-log";
 const SETUP_ERROR_EVENT = "semanticgallery://setup-error";
 const RUNTIME_READY_EVENT = "semanticgallery://runtime-ready";
+const INDEX_PROGRESS_EVENT = "semanticgallery://folder-index-progress";
 const DEFAULT_LIMIT = 25;
+const AUTO_REFRESH_INTERVAL_MS = 5000;
 
 function createEmptyQuery() {
   return {
@@ -59,6 +74,8 @@ let lightboxItem = null;
 let currentQuery = createEmptyQuery();
 let pendingTrashConfirmation = null;
 let setupLogsPinnedToBottom = true;
+let autoRefreshHandle = null;
+let automationToolsEnabled = false;
 
 const elements = {
   launchScreen: document.getElementById("launch-screen"),
@@ -82,6 +99,7 @@ const elements = {
   encoderStatusLabel: document.getElementById("encoder-status-label"),
   refreshStatusLabel: document.getElementById("refresh-status-label"),
   settingsFolderValue: document.getElementById("settings-folder-value"),
+  settingsIndexProgressShell: document.getElementById("settings-index-progress-shell"),
   settingsIndexProgressLabel: document.getElementById("settings-index-progress-label"),
   settingsIndexProgressBar: document.getElementById("settings-index-progress-bar"),
   settingsIndexProgressTimeRow: document.getElementById("settings-index-progress-time-row"),
@@ -89,6 +107,8 @@ const elements = {
   settingsIndexProgressRemaining: document.getElementById("settings-index-progress-remaining"),
   settingsIndexProgressEta: document.getElementById("settings-index-progress-eta"),
   settingsIndexMessage: document.getElementById("settings-index-message"),
+  settingsStage2Feedback: document.getElementById("settings-stage2-feedback"),
+  settingsStage2ProgressShell: document.getElementById("settings-stage2-progress-shell"),
   settingsStage2ProgressLabel: document.getElementById("settings-stage2-progress-label"),
   settingsStage2ProgressBar: document.getElementById("settings-stage2-progress-bar"),
   settingsStage2ProgressTimeRow: document.getElementById("settings-stage2-progress-time-row"),
@@ -96,6 +116,7 @@ const elements = {
   settingsStage2ProgressRemaining: document.getElementById("settings-stage2-progress-remaining"),
   settingsStage2ProgressEta: document.getElementById("settings-stage2-progress-eta"),
   settingsStage2Message: document.getElementById("settings-stage2-message"),
+  settingsStage2StepList: document.getElementById("settings-stage2-step-list"),
   lastTaskMessage: document.getElementById("last-task-message"),
   openUninstallerButton: document.getElementById("open-uninstaller-button"),
   resultsCountLabel: document.getElementById("results-count-label"),
@@ -112,9 +133,15 @@ const elements = {
   settingsButton: document.getElementById("settings-button"),
   settingsBackButton: document.getElementById("settings-back-button"),
   chooseFolderButton: document.getElementById("choose-folder-button"),
+  automationFolderShell: document.getElementById("automation-folder-shell"),
+  automationFolderInput: document.getElementById("automation-folder-input"),
+  automationFolderSubmit: document.getElementById("automation-folder-submit"),
   runStage2Button: document.getElementById("run-stage2-button"),
   searchForm: document.getElementById("search-form"),
   searchInput: document.getElementById("search-input"),
+  automationImageShell: document.getElementById("automation-image-shell"),
+  automationImageInput: document.getElementById("automation-image-input"),
+  automationImageSubmit: document.getElementById("automation-image-submit"),
   searchQueryChip: document.getElementById("search-query-chip"),
   searchQueryChipImage: document.getElementById("search-query-chip-image"),
   searchQueryChipLabel: document.getElementById("search-query-chip-label"),
@@ -172,6 +199,10 @@ function normalizeLimit() {
   return Math.min(raw, 100);
 }
 
+function indexedImageCount() {
+  return Math.max(Number(state.indexing.current) || 0, Number(state.indexing.total) || 0);
+}
+
 function revokeOwnedQueryPreview(query) {
   if (query?.previewUrlOwned && query.previewUrl?.startsWith("blob:")) {
     URL.revokeObjectURL(query.previewUrl);
@@ -194,26 +225,41 @@ function clearCurrentQuery({ clearResults = false } = {}) {
   }
 }
 
-function withLimit(url) {
-  const nextUrl = new URL(url);
-  nextUrl.searchParams.set("limit", String(normalizeLimit()));
-  return nextUrl.toString();
+async function loadAutomationToolsStatus() {
+  try {
+    automationToolsEnabled = automationToolsEnabled || Boolean(await desktopAutomationToolsEnabled());
+  } catch {
+    // Keep the previous value when the bridge is not ready yet.
+  }
 }
 
-async function normalizeResultsPayload(payload) {
-  const baseUrl = await sidecarBaseUrl();
-  const resolveMediaUrl = (path) => (path ? new URL(path, `${baseUrl}/`).toString() : "");
+function normalizeResultsPayload(payload) {
   return {
     ...payload,
     results: (payload.results ?? []).map((item) => ({
       ...item,
-      thumbnailUrl: resolveMediaUrl(item.thumbnailUrl),
-      fullUrl: resolveMediaUrl(item.fullUrl),
-      metadataUrl: resolveMediaUrl(item.metadataUrl),
-      deleteUrl: resolveMediaUrl(item.deleteUrl),
-      similarUrl: resolveMediaUrl(item.similarUrl)
+      thumbnailUrl: toAssetUrl(item.thumbnailPath ?? item.thumbnailUrl),
+      fullUrl: toAssetUrl(item.fullPath ?? item.fullUrl)
     }))
   };
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const payload = typeof reader.result === "string" ? reader.result.split(",").at(-1) : "";
+      if (!payload) {
+        reject(new Error("Unsupported image payload."));
+        return;
+      }
+      resolve(payload);
+    };
+    reader.onerror = () => {
+      reject(new Error("Unsupported image payload."));
+    };
+    reader.readAsDataURL(blob);
+  });
 }
 
 async function syncBootstrapState() {
@@ -228,12 +274,13 @@ async function syncBootstrapState() {
 }
 
 async function syncRuntimeStatusSnapshot() {
-  const payload = await fetchJson("/api/runtime/status");
+  const payload = await desktopRuntimeStatus();
   dispatch({ type: "runtime-status", payload });
   return payload;
 }
 
 async function handleRuntimeReady() {
+  await loadAutomationToolsStatus();
   if (runtimeStatusLoaded) {
     await connectRuntimeEvents();
     return;
@@ -260,25 +307,8 @@ async function connectRuntimeEvents() {
 
   const baseUrl = await sidecarBaseUrl();
   runtimeEventSource = new EventSource(`${baseUrl}/api/events`);
-  runtimeEventSource.addEventListener("folder-index-progress", (event) => {
-    dispatch({ type: "index-progress", payload: JSON.parse(event.data) });
-  });
   runtimeEventSource.addEventListener("stage2-progress", (event) => {
     dispatch({ type: "stage2-progress", payload: JSON.parse(event.data) });
-  });
-  runtimeEventSource.addEventListener("folder-refresh-failed", (event) => {
-    const payload = JSON.parse(event.data);
-    dispatch({ type: "task-message", payload: payload.message ?? "Folder refresh failed." });
-  });
-  runtimeEventSource.addEventListener("folder-refreshed", async () => {
-    try {
-      await syncRuntimeStatusSnapshot();
-      if (currentQuery.kind !== "none") {
-        await rerunCurrentSearch();
-      }
-    } catch (error) {
-      dispatch({ type: "task-message", payload: error.message });
-    }
   });
 }
 
@@ -442,7 +472,10 @@ function closeLightbox() {
 
 async function openLightbox(item) {
   lightboxItem = item;
-  elements.lightboxImage.src = item.fullUrl;
+  attachImageFallback(
+    elements.lightboxImage,
+    buildImageSourceCandidates(item.fullUrl, item.thumbnailUrl)
+  );
   elements.lightboxImage.alt = item.name ?? item.fileName ?? "Image";
   elements.lightboxMeta.hidden = true;
   elements.lightboxInfoToggle.setAttribute("aria-expanded", "false");
@@ -452,8 +485,8 @@ async function openLightbox(item) {
   elements.lightboxDimensions.textContent = "Loading";
   elements.lightboxTimeLabel.textContent = "Time";
   elements.lightboxTime.textContent = "Loading";
-  elements.lightboxDelete.disabled = !item.deleteUrl;
-  elements.lightboxSimilar.disabled = !item.similarUrl;
+  elements.lightboxDelete.disabled = !item.relativePath;
+  elements.lightboxSimilar.disabled = !item.relativePath;
   elements.lightbox.hidden = false;
   updateBodyLock();
 
@@ -463,7 +496,7 @@ async function openLightbox(item) {
   activeMetadataController = new AbortController();
 
   try {
-    const metadata = await fetchJson(item.metadataUrl, { signal: activeMetadataController.signal });
+    const metadata = await desktopMetadata(item.relativePath ?? "");
     if (lightboxItem?.relativePath !== item.relativePath) {
       return;
     }
@@ -508,8 +541,9 @@ function renderResults(results) {
     const node = elements.resultCardTemplate.content.firstElementChild.cloneNode(true);
     node.dataset.relativePath = item.relativePath ?? "";
     node.setAttribute("aria-label", item.fileName ?? item.name ?? "Image");
-    node.querySelector(".result-thumb").src = item.thumbnailUrl ?? item.fullUrl ?? "";
-    node.querySelector(".result-thumb").alt = item.name ?? item.fileName ?? "Image";
+    const image = node.querySelector(".result-thumb");
+    image.alt = item.name ?? item.fileName ?? "Image";
+    attachImageFallback(image, buildImageSourceCandidates(item.thumbnailUrl, item.fullUrl));
     fragment.append(node);
   }
   elements.results.append(fragment);
@@ -545,6 +579,50 @@ function renderSetupSteps() {
   }
 
   elements.setupStepList.append(fragment);
+}
+
+function renderStage2Steps(steps) {
+  elements.settingsStage2StepList.replaceChildren();
+  const fragment = document.createDocumentFragment();
+
+  for (const step of steps) {
+    const row = document.createElement("div");
+    row.className = `setup-step is-${step.status}`;
+
+    const meta = document.createElement("div");
+    meta.className = "setup-step-meta";
+    const label = document.createElement("span");
+    label.textContent = step.label;
+    const status = document.createElement("span");
+    status.textContent =
+      step.status === "done"
+        ? "Ready"
+        : step.status === "failed"
+          ? "Failed"
+          : step.status === "running"
+            ? "Working"
+            : "Waiting";
+    meta.append(label, status);
+
+    const bar = document.createElement("div");
+    bar.className = "setup-step-track";
+    const fill = document.createElement("span");
+    const runningPercent = step.percent > 0 ? step.percent : 64;
+    fill.style.width =
+      step.status === "done"
+        ? "100%"
+        : step.status === "failed"
+          ? `${Math.max(step.percent, 22)}%`
+          : step.status === "running"
+            ? `${runningPercent}%`
+            : "0%";
+    bar.append(fill);
+
+    row.append(meta, bar);
+    fragment.append(row);
+  }
+
+  elements.settingsStage2StepList.append(fragment);
 }
 
 function renderSetupLogs() {
@@ -648,8 +726,11 @@ function render() {
   elements.refreshStatusLabel.textContent =
     state.indexing.status === "running" ? "Indexing" : state.refresh.label;
   elements.lastTaskMessage.textContent = state.lastTaskMessage || "";
+  elements.settingsIndexProgressShell.hidden = !indexSummary.showProgress;
+  elements.settingsIndexProgressShell.style.display = indexSummary.showProgress ? "grid" : "none";
   elements.settingsIndexProgressLabel.textContent = indexSummary.countLabel;
-  elements.settingsIndexProgressBar.style.width = `${indexSummary.percent}%`;
+  elements.settingsIndexProgressBar.parentElement.classList.toggle("is-indeterminate", indexSummary.indeterminate);
+  elements.settingsIndexProgressBar.style.width = indexSummary.indeterminate ? "34%" : `${indexSummary.percent}%`;
   const showProgressTiming = Boolean(indexSummary.elapsedLabel || indexSummary.remainingLabel || indexSummary.etaLabel);
   elements.settingsIndexProgressTimeRow.hidden = !showProgressTiming;
   elements.settingsIndexProgressTimeRow.style.display = showProgressTiming ? "flex" : "none";
@@ -657,7 +738,10 @@ function render() {
   elements.settingsIndexProgressRemaining.textContent = indexSummary.remainingLabel;
   elements.settingsIndexProgressEta.textContent = indexSummary.etaLabel;
   elements.settingsIndexMessage.textContent = state.indexing.message;
+  elements.settingsStage2ProgressShell.hidden = !stage2Summary.showProgress;
+  elements.settingsStage2ProgressShell.style.display = stage2Summary.showProgress ? "grid" : "none";
   elements.settingsStage2ProgressLabel.textContent = stage2Summary.countLabel;
+  elements.settingsStage2ProgressBar.parentElement.classList.remove("is-indeterminate");
   elements.settingsStage2ProgressBar.style.width = `${stage2Summary.percent}%`;
   const showStage2Timing = Boolean(stage2Summary.elapsedLabel || stage2Summary.remainingLabel || stage2Summary.etaLabel);
   elements.settingsStage2ProgressTimeRow.hidden = !showStage2Timing;
@@ -665,7 +749,13 @@ function render() {
   elements.settingsStage2ProgressElapsed.textContent = stage2Summary.elapsedLabel;
   elements.settingsStage2ProgressRemaining.textContent = stage2Summary.remainingLabel;
   elements.settingsStage2ProgressEta.textContent = stage2Summary.etaLabel;
+  const showStage2Feedback = state.stage2.status === "failed" && Boolean(state.stage2.message);
+  elements.settingsStage2Feedback.hidden = !showStage2Feedback;
+  elements.settingsStage2Feedback.style.display = showStage2Feedback ? "block" : "none";
+  elements.settingsStage2Feedback.textContent = showStage2Feedback ? state.stage2.message : "";
   elements.settingsStage2Message.textContent = stage2Summary.detailLabel || state.stage2.message;
+  elements.settingsStage2StepList.hidden = !stage2Summary.showSteps;
+  elements.settingsStage2StepList.style.display = stage2Summary.showSteps ? "grid" : "none";
 
   const stage2Running = state.stage2.status === "running";
   elements.refreshButton.disabled = !state.activeFolder || state.refresh.isRunning || stage2Running;
@@ -679,6 +769,12 @@ function render() {
   elements.searchInput.placeholder = state.activeFolder
     ? "Describe the photo you want to find"
     : "Choose a folder first";
+  elements.automationFolderShell.hidden = !automationToolsEnabled;
+  elements.automationFolderShell.style.display = automationToolsEnabled ? "grid" : "none";
+  elements.automationFolderSubmit.disabled = state.setup.status !== "ready" || state.indexing.status === "running" || stage2Running;
+  elements.automationImageShell.hidden = !automationToolsEnabled;
+  elements.automationImageShell.style.display = automationToolsEnabled ? "grid" : "none";
+  elements.automationImageSubmit.disabled = !state.activeFolder;
   const queryPresentation = buildQueryPresentation(currentQuery);
   elements.searchForm.classList.toggle("has-query-chip", Boolean(queryPresentation.chip));
   if (currentQuery.kind === "text") {
@@ -699,13 +795,18 @@ function render() {
   }
 
   renderSetupSteps();
+  if (stage2Summary.showSteps) {
+    renderStage2Steps(stage2Summary.steps ?? []);
+  } else {
+    elements.settingsStage2StepList.replaceChildren();
+  }
   renderSetupLogs();
   renderResults(state.results);
 }
 
 async function loadRuntimeStatus() {
   try {
-    const payload = await fetchJson("/api/runtime/status");
+    const payload = await desktopRuntimeStatus();
     dispatch({ type: "runtime-status", payload });
     dispatch({ type: "setup-finished" });
   } catch (error) {
@@ -714,43 +815,8 @@ async function loadRuntimeStatus() {
   }
 }
 
-async function refreshFolder() {
-  dispatch({ type: "refresh-started" });
-  dispatch({
-    type: "index-progress",
-    payload: {
-      status: "running",
-      phase: "start",
-      current: 0,
-      total: 0,
-      embeddedCount: 0,
-      reusedCount: 0,
-      message: "Checking the active folder for index updates."
-    }
-  });
-  try {
-    const payload = await fetchJson("/api/folders/refresh", { method: "POST" });
-    dispatch({ type: "folder-selected", payload });
-    dispatch({ type: "refresh-finished", payload: { label: payload.skipped ? "Up to date" : "Refreshed" } });
-    if (currentQuery.kind !== "none") {
-      await rerunCurrentSearch();
-    }
-  } catch (error) {
-    dispatch({ type: "refresh-finished", payload: { label: "Refresh failed" } });
-    dispatch({ type: "task-message", payload: error.message });
-  }
-}
-
-async function chooseFolder() {
-  try {
-    const folderPath = await pickFolder();
-    if (!folderPath) {
-      return;
-    }
-    closeLightbox();
-    resetSelection();
-    clearCurrentQuery();
-    dispatch({ type: "results-received", payload: { results: [] } });
+async function refreshFolder({ lightweight = false, silent = false } = {}) {
+  if (!silent) {
     dispatch({ type: "refresh-started" });
     dispatch({
       type: "index-progress",
@@ -761,22 +827,114 @@ async function chooseFolder() {
         total: 0,
         embeddedCount: 0,
         reusedCount: 0,
-        message: "Scanning the selected folder for index updates."
+        message: "Checking the active folder for index updates."
       }
     });
-    const payload = await fetchJson("/api/folders/select", {
-      method: "POST",
-      body: JSON.stringify({ folderPath })
-    });
+  }
+  try {
+    const payload = await desktopRefreshFolder({ lightweight });
     dispatch({ type: "folder-selected", payload });
-    dispatch({ type: "refresh-finished", payload: { label: "Indexed" } });
+    if (!silent) {
+      dispatch({ type: "refresh-finished", payload: { label: payload.skipped ? "Up to date" : "Refreshed" } });
+    }
+    if (payload.refreshed && currentQuery.kind !== "none") {
+      await rerunCurrentSearch();
+    }
+  } catch (error) {
+    if (!silent) {
+      dispatch({ type: "refresh-finished", payload: { label: "Refresh failed" } });
+    }
+    dispatch({ type: "task-message", payload: error.message });
+  }
+}
+
+async function selectFolderByPath(folderPath) {
+  closeLightbox();
+  resetSelection();
+  clearCurrentQuery();
+  dispatch({ type: "results-received", payload: { results: [] } });
+  dispatch({ type: "refresh-started" });
+  dispatch({
+    type: "index-progress",
+    payload: {
+      status: "running",
+      phase: "start",
+      current: 0,
+      total: 0,
+      embeddedCount: 0,
+      reusedCount: 0,
+      message: "Scanning the selected folder for index updates."
+    }
+  });
+  const payload = await desktopSelectFolder(folderPath);
+  dispatch({ type: "folder-selected", payload });
+  dispatch({ type: "refresh-finished", payload: { label: "Indexed" } });
+}
+
+async function chooseFolder() {
+  try {
+    const folderPath = await pickFolder();
+    if (!folderPath) {
+      return;
+    }
+    await selectFolderByPath(folderPath);
   } catch (error) {
     dispatch({ type: "refresh-finished", payload: { label: "Index failed" } });
     dispatch({ type: "task-message", payload: error.message });
   }
 }
 
+async function loadAutomationFolderPath() {
+  const folderPath = elements.automationFolderInput.value.trim();
+  if (!folderPath) {
+    return;
+  }
+  try {
+    await selectFolderByPath(folderPath);
+  } catch (error) {
+    dispatch({ type: "refresh-finished", payload: { label: "Index failed" } });
+    dispatch({ type: "task-message", payload: error.message });
+  }
+}
+
+async function loadAutomationImagePath() {
+  const filePath = elements.automationImageInput.value.trim();
+  if (!filePath) {
+    return;
+  }
+  try {
+    const response = await fetch(toAssetUrl(filePath));
+    if (!response.ok) {
+      throw new Error("The selected image is not available.");
+    }
+    const blob = await response.blob();
+    const fileName = filePath.split(/[\\/]/).at(-1) || "image-query";
+    const file = new File([blob], fileName, { type: blob.type || "" });
+    await runUploadedImageSearch(file);
+  } catch (error) {
+    dispatch({ type: "task-message", payload: error.message });
+  }
+}
+
 async function runStage2() {
+  const guardMessage = resolveStage2LaunchGuard({
+    setupStatus: state.setup.status,
+    activeFolder: state.activeFolder,
+    indexingStatus: state.indexing.status,
+    indexedImageCount: indexedImageCount(),
+    stage2Status: state.stage2.status
+  });
+  if (guardMessage) {
+    dispatch({
+      type: "stage2-progress",
+      payload: {
+        status: "failed",
+        phase: "validate",
+        message: guardMessage
+      }
+    });
+    return;
+  }
   try {
     dispatch({
       type: "stage2-progress",
@@ -788,7 +946,7 @@ async function runStage2() {
         message: "Checking the active folder for Stage 2 adaptation."
       }
     });
-    const payload = await fetchJson("/api/stage2/run", { method: "POST" });
+    const payload = await desktopRunStage2();
     dispatch({ type: "folder-selected", payload });
     dispatch({ type: "task-message", payload: payload.lastTaskMessage ?? "Stage 2 adaptation is ready." });
     if (currentQuery.kind !== "none") {
@@ -815,9 +973,7 @@ async function runTextSearch(queryText) {
     return;
   }
 
-  const payload = await normalizeResultsPayload(
-    await fetchJson(`/api/search?q=${encodeURIComponent(text)}&limit=${normalizeLimit()}`)
-  );
+  const payload = normalizeResultsPayload(await desktopSearchText(text, normalizeLimit()));
   replaceCurrentQuery({ kind: "text", text });
   dispatch({ type: "results-received", payload });
 }
@@ -829,14 +985,10 @@ async function runUploadedImageSearch(file, { previewUrl = null, previewUrlOwned
 
   const resolvedPreviewUrl = previewUrl ?? URL.createObjectURL(file);
   const ownsPreviewUrl = previewUrl ? previewUrlOwned : true;
-  const formData = new FormData();
-  formData.append("image", file, file.name || "pasted-image");
   try {
-    const payload = await normalizeResultsPayload(
-      await fetchJson(`/api/search/image?limit=${normalizeLimit()}`, {
-        method: "POST",
-        body: formData
-      })
+    const imageBase64 = await blobToBase64(file);
+    const payload = normalizeResultsPayload(
+      await desktopSearchUploadedImage(imageBase64, file.name || "pasted-image", normalizeLimit())
     );
     replaceCurrentQuery({
       kind: "upload",
@@ -856,11 +1008,9 @@ async function runUploadedImageSearch(file, { previewUrl = null, previewUrlOwned
 }
 
 async function runSimilarSearch(item) {
-  const queryUrl = withLimit(item.similarUrl);
-  const payload = await normalizeResultsPayload(await fetchJson(queryUrl));
+  const payload = normalizeResultsPayload(await desktopSearchSimilar(item.relativePath ?? "", normalizeLimit()));
   replaceCurrentQuery({
     kind: "similar",
-    url: item.similarUrl,
     relativePath: item.relativePath ?? "",
     fileName: item.fileName ?? item.name ?? "this image",
     previewUrl: item.thumbnailUrl ?? item.fullUrl ?? "",
@@ -871,8 +1021,10 @@ async function runSimilarSearch(item) {
 }
 
 async function rerunCurrentSearch() {
-  if (currentQuery.kind === "similar" && currentQuery.url) {
-    const payload = await normalizeResultsPayload(await fetchJson(withLimit(currentQuery.url)));
+  if (currentQuery.kind === "similar" && currentQuery.relativePath) {
+    const payload = normalizeResultsPayload(
+      await desktopSearchSimilar(currentQuery.relativePath, normalizeLimit())
+    );
     dispatch({ type: "results-received", payload });
     return;
   }
@@ -884,9 +1036,7 @@ async function rerunCurrentSearch() {
     return;
   }
   if (currentQuery.kind === "text" && currentQuery.text) {
-    const payload = await normalizeResultsPayload(
-      await fetchJson(`/api/search?q=${encodeURIComponent(currentQuery.text)}&limit=${normalizeLimit()}`)
-    );
+    const payload = normalizeResultsPayload(await desktopSearchText(currentQuery.text, normalizeLimit()));
     dispatch({ type: "results-received", payload });
     return;
   }
@@ -924,7 +1074,7 @@ async function handlePasteImage(event) {
 }
 
 async function deleteActiveImage() {
-  if (!lightboxItem?.deleteUrl || elements.lightboxDelete.disabled) {
+  if (!lightboxItem?.relativePath || elements.lightboxDelete.disabled) {
     return;
   }
   const confirmed = await requestTrashConfirmation({});
@@ -934,7 +1084,7 @@ async function deleteActiveImage() {
 
   elements.lightboxDelete.disabled = true;
   try {
-    const payload = await fetchJson(lightboxItem.deleteUrl, { method: "DELETE" });
+    const payload = await desktopDeleteImage(lightboxItem.relativePath);
     closeLightbox();
     await syncRuntimeStatusSnapshot();
     await refreshSearchAfterDelete([payload.relativePath]);
@@ -957,10 +1107,7 @@ async function deleteSelectedImages() {
 
   elements.selectionDelete.disabled = true;
   try {
-    const payload = await fetchJson("/api/images/batch-delete", {
-      method: "POST",
-      body: JSON.stringify({ paths: [...selectedPaths] })
-    });
+    const payload = await desktopDeleteImages([...selectedPaths]);
     await syncRuntimeStatusSnapshot();
     await refreshSearchAfterDelete((payload.deleted ?? []).map((item) => item.relativePath));
     resetSelection({ keepMode: true });
@@ -994,8 +1141,38 @@ async function registerSetupListeners() {
   ]);
 }
 
+async function registerDesktopListeners() {
+  await listen(INDEX_PROGRESS_EVENT, (event) => {
+    dispatch({ type: "index-progress", payload: event.payload });
+  });
+}
+
+function startAutoRefreshLoop() {
+  if (autoRefreshHandle) {
+    return;
+  }
+  autoRefreshHandle = window.setInterval(() => {
+    if (
+      !state.activeFolder ||
+      state.setup.status !== "ready" ||
+      state.refresh.isRunning ||
+      state.indexing.status === "running" ||
+      state.stage2.status === "running"
+    ) {
+      return;
+    }
+
+    refreshFolder({ lightweight: true, silent: true }).catch(() => {
+      // The failure state is already reduced into UI state.
+    });
+  }, AUTO_REFRESH_INTERVAL_MS);
+}
+
 async function initialize() {
   await registerSetupListeners();
+  await registerDesktopListeners();
+  startAutoRefreshLoop();
+  await loadAutomationToolsStatus();
   await syncBootstrapState();
   if (state.setup.onboardingRequired) {
     if (state.setup.status === "running" || state.setup.status === "cancelling") {
@@ -1032,9 +1209,19 @@ elements.setupLogList.addEventListener("scroll", () => {
   });
 });
 elements.refreshButton.addEventListener("click", refreshFolder);
-elements.settingsButton.addEventListener("click", () => dispatch({ type: "settings-opened" }));
+elements.settingsButton.addEventListener("click", async () => {
+  await loadAutomationToolsStatus();
+  dispatch({ type: "settings-opened" });
+});
 elements.settingsBackButton.addEventListener("click", () => dispatch({ type: "settings-closed" }));
 elements.chooseFolderButton.addEventListener("click", chooseFolder);
+elements.automationFolderSubmit.addEventListener("click", loadAutomationFolderPath);
+elements.automationFolderInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    loadAutomationFolderPath();
+  }
+});
 elements.runStage2Button.addEventListener("click", runStage2);
 elements.openUninstallerButton.addEventListener("click", async () => {
   try {
@@ -1062,6 +1249,13 @@ elements.searchForm.addEventListener("submit", async (event) => {
 elements.clearQueryChipButton.addEventListener("click", () => {
   clearCurrentQuery({ clearResults: true });
   render();
+});
+elements.automationImageSubmit.addEventListener("click", loadAutomationImagePath);
+elements.automationImageInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    loadAutomationImagePath();
+  }
 });
 elements.searchInput.addEventListener("paste", handlePasteImage);
 elements.searchForm.addEventListener("paste", handlePasteImage);
@@ -1123,7 +1317,7 @@ elements.lightboxDelete.addEventListener("click", async () => {
   await deleteActiveImage();
 });
 elements.lightboxSimilar.addEventListener("click", async () => {
-  if (!lightboxItem?.similarUrl || elements.lightboxSimilar.disabled) {
+  if (!lightboxItem?.relativePath || elements.lightboxSimilar.disabled) {
     return;
   }
   try {

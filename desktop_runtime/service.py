@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import io
 import json
 import mimetypes
+import shutil
+import subprocess
+import sys
 import tempfile
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -40,10 +45,55 @@ else:  # pragma: no cover - covered by integration on machines with pillow-heif
 THUMBNAIL_SIZE = (512, 512)
 HEIF_SUFFIXES = {".heic", ".heif"}
 MAX_IMAGE_UPLOAD_BYTES = 20 * 1024 * 1024
+THUMBNAIL_PREWARM_WORKERS = 4
+VISIBLE_THUMBNAIL_PREWARM_COUNT = 5
+STAGE2_PHASE_ORDER = ("prepare", "adapt", "validate", "reindex", "finalize")
+STAGE2_PHASE_WEIGHTS = {
+    "prepare": 15,
+    "adapt": 55,
+    "validate": 10,
+    "reindex": 15,
+    "finalize": 5,
+}
 
 
 class DesktopServiceError(RuntimeError):
     pass
+
+
+def _normalized_progress_ratio(current: object, total: object) -> float:
+    try:
+        current_value = float(current)
+        total_value = float(total)
+    except (TypeError, ValueError):
+        return 0.0
+    if total_value <= 0:
+        return 0.0
+    return min(max(current_value / total_value, 0.0), 1.0)
+
+
+def _stage2_progress_percent(payload: dict[str, object]) -> int:
+    status = str(payload.get("status", "idle"))
+    phase = str(payload.get("phase", "idle"))
+    if status == "ready":
+        return 100
+    if phase not in STAGE2_PHASE_ORDER:
+        return 0
+
+    completed_weight = 0.0
+    for known_phase in STAGE2_PHASE_ORDER:
+        if known_phase == phase:
+            break
+        completed_weight += STAGE2_PHASE_WEIGHTS[known_phase]
+
+    ratio = _normalized_progress_ratio(
+        payload.get("phaseCurrent", payload.get("current", 0)),
+        payload.get("phaseTotal", payload.get("total", 0)),
+    )
+    if phase == "finalize" and status == "running" and ratio <= 0:
+        ratio = 0.64
+    percent = completed_weight + (STAGE2_PHASE_WEIGHTS[phase] * ratio)
+    return min(99, max(0, int(round(percent))))
 
 
 class EncoderProtocol(Protocol):
@@ -117,6 +167,8 @@ class DesktopService:
             "phase": "idle",
             "current": 0,
             "total": 0,
+            "phaseCurrent": 0,
+            "phaseTotal": 0,
             "startedAtMs": None,
             "elapsedSeconds": 0,
             "remainingSeconds": None,
@@ -213,6 +265,17 @@ class DesktopService:
                     self._stage2_started_at_ms = previous_stage2_started_at_ms
                     self.last_task_message = str(exc)
                 raise DesktopServiceError(f"Failed to index the selected folder: {exc}") from exc
+
+    def activate_folder(self, folder_path: str, encoder_signature: str) -> dict[str, object]:
+        resolved = Path(folder_path).expanduser().resolve()
+        if not resolved.is_dir():
+            raise DesktopServiceError("The selected folder is not available.")
+
+        with self._lock:
+            self.active_folder = resolved
+            self.active_encoder_signature = encoder_signature or "stage1"
+            self.last_task_message = "The active folder is ready."
+        return self.runtime_status()
 
     def refresh_active_folder(self, lightweight: bool = False) -> dict[str, object]:
         with self._mutation_lock:
@@ -317,9 +380,11 @@ class DesktopService:
                 self._publish_stage2_progress(
                     {
                         "status": "running",
-                        "phase": "validate",
+                        "phase": "check",
                         "current": 0,
                         "total": 0,
+                        "phaseCurrent": 0,
+                        "phaseTotal": 0,
                         "message": "Checking the active folder for Stage 2 adaptation.",
                     }
                 )
@@ -328,7 +393,38 @@ class DesktopService:
                 next_signature = self.stage2_job.run(folder)
                 with self._lock:
                     next_encoder = self._load_encoder(folder, next_signature)
-                reconcile_folder(self.store, folder, next_signature, next_encoder)
+                reconcile_folder(
+                    self.store,
+                    folder,
+                    next_signature,
+                    next_encoder,
+                    emit_progress=lambda payload: self._publish_stage2_progress(
+                        {
+                            "status": "running",
+                            "phase": "reindex",
+                            "current": int(payload.get("current", 0) or 0),
+                            "total": int(payload.get("total", 0) or 0),
+                            "phaseCurrent": int(payload.get("current", 0) or 0),
+                            "phaseTotal": int(payload.get("total", 0) or 0),
+                            "embeddedCount": int(payload.get("embeddedCount", 0) or 0),
+                            "reusedCount": int(payload.get("reusedCount", 0) or 0),
+                            "message": (
+                                "Rebuilding the active folder index with Stage 2."
+                                if payload.get("phase") == "finish"
+                                else f"Rebuilding the active folder index with Stage 2 ({int(payload.get('current', 0) or 0)}/{int(payload.get('total', 0) or 0)})"
+                            ),
+                        }
+                    ),
+                )
+                self._publish_stage2_progress(
+                    {
+                        "status": "running",
+                        "phase": "finalize",
+                        "phaseCurrent": 0,
+                        "phaseTotal": 1,
+                        "message": "Loading the Stage 2 search view.",
+                    }
+                )
                 next_view = ActiveSearchView.from_store(self.store, folder.as_posix(), next_signature)
             except (DesktopServiceError, Stage2Error) as exc:
                 with self._lock:
@@ -383,6 +479,8 @@ class DesktopService:
                         "phase": "finish",
                         "current": completed_total,
                         "total": completed_total,
+                        "phaseCurrent": 1,
+                        "phaseTotal": 1,
                         "message": "Stage 2 adaptation is ready.",
                     }
                 )
@@ -396,6 +494,30 @@ class DesktopService:
             )
             return {"stage2Ran": True, **self.runtime_status()}
 
+    def encode_text_vector(self, folder_path: str, encoder_signature: str, query_text: str) -> list[float]:
+        text = query_text.strip()
+        if not text:
+            raise DesktopServiceError("Search text is empty.")
+        folder = Path(folder_path).expanduser().resolve()
+        encoder = self._load_encoder(folder, encoder_signature or "stage1")
+        try:
+            vector = encoder.encode_text(text)
+        except Exception as exc:
+            raise DesktopServiceError(f"Failed to encode the search query: {exc}") from exc
+        return np.asarray(vector, dtype=np.float32).tolist()
+
+    def encode_image_path_vector(self, folder_path: str, encoder_signature: str, image_path: str) -> list[float]:
+        folder = Path(folder_path).expanduser().resolve()
+        file_path = Path(image_path).expanduser().resolve()
+        if not file_path.is_file():
+            raise DesktopServiceError("Image not found.")
+        encoder = self._load_encoder(folder, encoder_signature or "stage1")
+        try:
+            vector = encoder.encode_image(file_path)
+        except Exception as exc:
+            raise DesktopServiceError(f"Failed to encode the image: {exc}") from exc
+        return np.asarray(vector, dtype=np.float32).tolist()
+
     def search_text(self, query_text: str, limit: int) -> dict[str, object]:
         with self._lock:
             text = query_text.strip()
@@ -408,16 +530,21 @@ class DesktopService:
             except Exception as exc:
                 raise DesktopServiceError(f"Failed to encode the search query: {exc}") from exc
             matches = self._active_search_view.search(query_vector, limit)
-            return {"query": text, "results": [self._result_payload(path) for path in matches]}
+            result_payloads, thumbnail_paths = self._build_result_payloads(matches, folder)
+        self._prewarm_search_result_thumbnails(thumbnail_paths)
+        return {"query": text, "results": result_payloads}
 
     def search_image(self, file_bytes: bytes, limit: int, filename: str | None = None) -> dict[str, object]:
         with self._lock:
             if limit <= 0 or not self._active_search_view.paths:
                 return {"query": "", "results": []}
 
+            folder = self._require_active_folder()
             query_vector = self._encode_uploaded_image(file_bytes, filename)
             matches = self._active_search_view.search(query_vector, limit)
-            return {"query": "", "results": [self._result_payload(path) for path in matches]}
+            result_payloads, thumbnail_paths = self._build_result_payloads(matches, folder)
+        self._prewarm_search_result_thumbnails(thumbnail_paths)
+        return {"query": "", "results": result_payloads}
 
     def search_similar(self, image_path: str, limit: int) -> dict[str, object]:
         with self._lock:
@@ -425,16 +552,19 @@ class DesktopService:
             if limit <= 0 or not self._active_search_view.paths:
                 return {"query": "", "results": []}
 
+            folder = self._require_active_folder()
             matches = self._active_search_view.search_similar(file_path.as_posix(), limit)
             if not matches:
-                encoder = self._load_encoder(self._require_active_folder(), self.active_encoder_signature)
+                encoder = self._load_encoder(folder, self.active_encoder_signature)
                 try:
                     query_vector = encoder.encode_image(file_path)
                 except Exception as exc:
                     raise DesktopServiceError(f"Failed to encode the reference image: {exc}") from exc
                 matches = self._active_search_view.search(query_vector, limit, exclude_path=file_path.as_posix())
 
-            return {"query": "", "results": [self._result_payload(path) for path in matches]}
+            result_payloads, thumbnail_paths = self._build_result_payloads(matches, folder)
+        self._prewarm_search_result_thumbnails(thumbnail_paths)
+        return {"query": "", "results": result_payloads}
 
     def metadata(self, image_path: str) -> dict[str, object]:
         with self._lock:
@@ -546,16 +676,15 @@ class DesktopService:
             next_payload = dict(payload)
 
             if status == "running":
-                if phase == "prepare" or self._stage2_started_at_monotonic is None or self._stage2_started_at_ms is None:
+                if phase in {"check", "prepare"} or self._stage2_started_at_monotonic is None or self._stage2_started_at_ms is None:
                     self._stage2_started_at_monotonic = time.monotonic()
                     self._stage2_started_at_ms = int(time.time() * 1000)
                 elapsed_seconds = max(0, int(round(time.monotonic() - self._stage2_started_at_monotonic)))
-                current = int(next_payload.get("current", 0) or 0)
-                total = int(next_payload.get("total", 0) or 0)
                 remaining_seconds = next_payload.get("remainingSeconds")
                 if remaining_seconds is None:
-                    if total > 0 and current > 0 and total >= current:
-                        remaining_seconds = int(round((elapsed_seconds / current) * (total - current)))
+                    progress_percent = _stage2_progress_percent(next_payload)
+                    if progress_percent > 0 and progress_percent < 100:
+                        remaining_seconds = int(round((elapsed_seconds / progress_percent) * (100 - progress_percent)))
                 else:
                     remaining_seconds = int(remaining_seconds)
                 next_payload.update(
@@ -623,6 +752,8 @@ class DesktopService:
                 "phase": "finish",
                 "current": 1,
                 "total": 1,
+                "phaseCurrent": 1,
+                "phaseTotal": 1,
                 "startedAtMs": None,
                 "elapsedSeconds": 0,
                 "remainingSeconds": 0,
@@ -637,6 +768,8 @@ class DesktopService:
             "phase": "idle",
             "current": 0,
             "total": 0,
+            "phaseCurrent": 0,
+            "phaseTotal": 0,
             "startedAtMs": None,
             "elapsedSeconds": 0,
             "remainingSeconds": None,
@@ -702,9 +835,8 @@ class DesktopService:
             raise DesktopServiceError("Image not found.")
         return candidate
 
-    def _result_payload(self, absolute_path: str) -> dict[str, object]:
-        file_path = Path(absolute_path).expanduser().resolve()
-        folder = self._require_active_folder()
+    @staticmethod
+    def _result_payload_for_folder(file_path: Path, folder: Path) -> dict[str, object]:
         relative_path = quote(file_path.relative_to(folder).as_posix(), safe="/")
         return {
             "path": file_path.as_posix(),
@@ -717,6 +849,15 @@ class DesktopService:
             "deleteUrl": f"/api/images/{relative_path}",
             "similarUrl": f"/api/similar/{relative_path}",
         }
+
+    def _build_result_payloads(self, absolute_paths: list[str], folder: Path) -> tuple[list[dict[str, object]], list[Path]]:
+        payloads: list[dict[str, object]] = []
+        file_paths: list[Path] = []
+        for absolute_path in absolute_paths:
+            file_path = Path(absolute_path).expanduser().resolve()
+            payloads.append(self._result_payload_for_folder(file_path, folder))
+            file_paths.append(file_path)
+        return payloads, file_paths
 
     @staticmethod
     def _scan_folder(folder_path: Path) -> FolderScanState:
@@ -928,21 +1069,104 @@ class DesktopService:
         return root
 
     def _thumbnail_cache_path(self, file_path: Path) -> Path:
-        stat = file_path.stat()
-        cache_key = f"{file_path.as_posix()}:{stat.st_mtime_ns}:{stat.st_size}"
+        resolved = file_path.expanduser().resolve()
+        stat = resolved.stat()
+        cache_key = f"{resolved.as_posix()}:{stat.st_mtime_ns}:{stat.st_size}"
         digest = hashlib.sha1(cache_key.encode("utf-8")).hexdigest()
-        return self._thumbnail_root() / f"{digest}.jpg"
+        return self._thumbnail_root() / f"{digest}.png"
+
+    def _generate_system_thumbnail(self, file_path: Path, target: Path) -> bool:
+        if sys.platform != "darwin":
+            return False
+
+        qlmanage_path = shutil.which("qlmanage")
+        if not qlmanage_path:
+            return False
+
+        with tempfile.TemporaryDirectory(prefix="semanticgallery-ql-", dir=target.parent) as temp_dir:
+            proc = subprocess.run(
+                [
+                    qlmanage_path,
+                    "-t",
+                    "-s",
+                    str(max(THUMBNAIL_SIZE)),
+                    "-o",
+                    temp_dir,
+                    file_path.as_posix(),
+                ],
+                capture_output=True,
+                text=True,
+            )
+            if proc.returncode != 0:
+                return False
+
+            generated_files = sorted(Path(temp_dir).iterdir())
+            if not generated_files:
+                return False
+
+            generated_files[0].replace(target)
+        return True
 
     def _ensure_thumbnail(self, file_path: Path) -> Path:
         target = self._thumbnail_cache_path(file_path)
         if target.exists():
             return target
 
-        with Image.open(file_path) as image:
-            image = ImageOps.exif_transpose(image).convert("RGB")
-            image.thumbnail(THUMBNAIL_SIZE, Image.Resampling.LANCZOS)
-            image.save(target, format="JPEG", quality=88, optimize=True)
+        if self._generate_system_thumbnail(file_path, target):
+            return target
+
+        with tempfile.NamedTemporaryFile(
+            prefix=f"{target.stem}-",
+            suffix=target.suffix,
+            dir=target.parent,
+            delete=False,
+        ) as handle:
+            temp_path = Path(handle.name)
+        try:
+            with Image.open(file_path) as image:
+                image = ImageOps.exif_transpose(image).convert("RGB")
+                image.thumbnail(THUMBNAIL_SIZE, Image.Resampling.LANCZOS)
+                image.save(temp_path, format="PNG", optimize=True)
+            temp_path.replace(target)
+        finally:
+            temp_path.unlink(missing_ok=True)
         return target
+
+    def _prewarm_thumbnails(self, file_paths: list[Path]) -> None:
+        if not file_paths:
+            return
+
+        unique_paths: list[Path] = []
+        seen_paths: set[str] = set()
+        for file_path in file_paths:
+            key = file_path.as_posix()
+            if key in seen_paths:
+                continue
+            seen_paths.add(key)
+            unique_paths.append(file_path)
+
+        if len(unique_paths) == 1:
+            self._ensure_thumbnail(unique_paths[0])
+            return
+
+        worker_count = min(THUMBNAIL_PREWARM_WORKERS, len(unique_paths))
+        with ThreadPoolExecutor(max_workers=worker_count) as executor:
+            tuple(executor.map(self._ensure_thumbnail, unique_paths))
+
+    def _schedule_thumbnail_prewarm(self, file_paths: list[Path]) -> None:
+        if not file_paths:
+            return
+
+        thread = threading.Thread(target=self._prewarm_thumbnails, args=(file_paths,), daemon=True)
+        thread.start()
+
+    def _prewarm_search_result_thumbnails(self, file_paths: list[Path]) -> None:
+        if not file_paths:
+            return
+
+        self._prewarm_thumbnails(file_paths[:VISIBLE_THUMBNAIL_PREWARM_COUNT])
+        if len(file_paths) > VISIBLE_THUMBNAIL_PREWARM_COUNT:
+            self._schedule_thumbnail_prewarm(file_paths[VISIBLE_THUMBNAIL_PREWARM_COUNT:])
 
     @staticmethod
     def _delete_thumbnail(thumbnail_path: Path | None) -> None:

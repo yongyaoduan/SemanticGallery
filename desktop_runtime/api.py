@@ -17,6 +17,23 @@ class FolderSelectionPayload(BaseModel):
     folderPath: str
 
 
+class FolderActivationPayload(BaseModel):
+    folderPath: str
+    encoderSignature: str = "stage1"
+
+
+class EncodeTextPayload(BaseModel):
+    folderPath: str
+    encoderSignature: str = "stage1"
+    queryText: str
+
+
+class EncodeImagePathPayload(BaseModel):
+    folderPath: str
+    encoderSignature: str = "stage1"
+    imagePath: str
+
+
 class BatchDeletePayload(BaseModel):
     paths: list[str]
 
@@ -77,6 +94,18 @@ def build_app(
         except (DesktopServiceError, Stage2Error) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    @app.post("/api/folders/activate")
+    async def activate_folder(payload: FolderActivationPayload):
+        try:
+            bind_service_loop()
+            return await asyncio.to_thread(
+                service.activate_folder,
+                payload.folderPath,
+                payload.encoderSignature,
+            )
+        except (DesktopServiceError, Stage2Error) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     @app.post("/api/folders/refresh")
     async def refresh_folder():
         try:
@@ -107,6 +136,34 @@ def build_app(
             bind_service_loop()
             file_bytes = await image.read()
             return await asyncio.to_thread(service.search_image, file_bytes, limit, image.filename)
+        except (DesktopServiceError, Stage2Error) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/encode/text")
+    async def encode_text(payload: EncodeTextPayload):
+        try:
+            bind_service_loop()
+            vector = await asyncio.to_thread(
+                service.encode_text_vector,
+                payload.folderPath,
+                payload.encoderSignature,
+                payload.queryText,
+            )
+            return {"vector": vector}
+        except (DesktopServiceError, Stage2Error) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/encode/image-path")
+    async def encode_image_path(payload: EncodeImagePathPayload):
+        try:
+            bind_service_loop()
+            vector = await asyncio.to_thread(
+                service.encode_image_path_vector,
+                payload.folderPath,
+                payload.encoderSignature,
+                payload.imagePath,
+            )
+            return {"vector": vector}
         except (DesktopServiceError, Stage2Error) as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

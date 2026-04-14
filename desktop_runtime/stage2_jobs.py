@@ -125,6 +125,8 @@ class ScriptStage2Runner:
                     "phase": "adapt",
                     "current": current_units,
                     "total": total_units,
+                    "phaseCurrent": 0,
+                    "phaseTotal": total_steps,
                     "message": f"Training epoch {epoch} of {self._epochs} · step 0 of {total_steps}",
                 }
             )
@@ -143,6 +145,8 @@ class ScriptStage2Runner:
                     "phase": "adapt",
                     "current": current_units,
                     "total": total_units,
+                    "phaseCurrent": step,
+                    "phaseTotal": total_steps,
                     "message": f"Training epoch {epoch} of {self._epochs} · step {step} of {total_steps}",
                 }
             )
@@ -159,6 +163,8 @@ class ScriptStage2Runner:
                     "phase": "validate",
                     "current": current_units,
                     "total": total_units,
+                    "phaseCurrent": epoch,
+                    "phaseTotal": self._epochs,
                     "message": f"Validating epoch {epoch} of {self._epochs}",
                 }
             )
@@ -227,6 +233,8 @@ class ScriptStage2Runner:
                 "phase": "prepare",
                 "current": 0,
                 "total": 0,
+                "phaseCurrent": 0,
+                "phaseTotal": 1,
                 "message": "Preparing private adaptation data.",
             }
         )
@@ -237,6 +245,8 @@ class ScriptStage2Runner:
                 "phase": "prepare",
                 "current": 1,
                 "total": 1,
+                "phaseCurrent": 1,
+                "phaseTotal": 1,
                 "message": "Private adaptation data is ready.",
             }
         )
@@ -249,7 +259,9 @@ class ScriptStage2Runner:
                 "phase": "finalize",
                 "current": max(1, total_units - 1),
                 "total": total_units,
-                "message": "Finalizing Stage 2 weights.",
+                "phaseCurrent": 0,
+                "phaseTotal": 1,
+                "message": "Loading the adapted encoder.",
             }
         )
 

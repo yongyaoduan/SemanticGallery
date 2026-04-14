@@ -21,6 +21,15 @@ class FakeEncoder:
         return np.asarray([float(len(query_text)), 1.0], dtype=np.float32)
 
 
+class FakeStage2Job:
+    def __init__(self, signature: str = "stage2-signature"):
+        self.signature = signature
+
+    def run(self, folder_path: Path) -> str:
+        del folder_path
+        return self.signature
+
+
 class DesktopServiceTests(unittest.TestCase):
     @staticmethod
     def _write_image(path: Path) -> None:
@@ -36,6 +45,12 @@ class DesktopServiceTests(unittest.TestCase):
             thumbnails_dir=root / "thumbs",
             setup_status="ready",
         )
+
+    @staticmethod
+    def _fake_system_thumbnail(_file_path: Path, target: Path) -> bool:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"thumb")
+        return True
 
     def test_runtime_status_remains_available_while_refresh_runs(self):
         with tempfile.TemporaryDirectory(prefix="sg-desktop-service-") as tmp_dir:
@@ -158,6 +173,123 @@ class DesktopServiceTests(unittest.TestCase):
             self.assertEqual(service.runtime_status()["stage2"]["startedAtMs"], 1_700_000_000_000)
             self.assertEqual(service.runtime_status()["stage2"]["elapsedSeconds"], 21)
             self.assertEqual(service.runtime_status()["stage2"]["remainingSeconds"], 0)
+
+    def test_search_text_prewarms_result_thumbnails(self):
+        with tempfile.TemporaryDirectory(prefix="sg-desktop-service-") as tmp_dir:
+            root = Path(tmp_dir)
+            folder = root / "gallery"
+            image_path = folder / "cat.jpg"
+            self._write_image(image_path)
+
+            service = self._build_service(root)
+            service.set_active_folder(folder.as_posix())
+
+            thumbnail_path = service._thumbnail_cache_path(image_path)
+            self.assertFalse(thumbnail_path.exists())
+
+            with patch.object(
+                service,
+                "_generate_system_thumbnail",
+                side_effect=self._fake_system_thumbnail,
+            ) as generate_thumbnail:
+                payload = service.search_text("cat", limit=5)
+
+            self.assertEqual(len(payload["results"]), 1)
+            self.assertTrue(thumbnail_path.is_file())
+            self.assertEqual(generate_thumbnail.call_count, 1)
+
+    def test_search_text_only_blocks_on_the_first_row_of_result_thumbnails(self):
+        with tempfile.TemporaryDirectory(prefix="sg-desktop-service-") as tmp_dir:
+            root = Path(tmp_dir)
+            folder = root / "gallery"
+            for index in range(6):
+                self._write_image(folder / f"cat-{index}.jpg")
+
+            service = self._build_service(root)
+            service.set_active_folder(folder.as_posix())
+
+            synchronous_batches: list[list[str]] = []
+            queued_batches: list[list[str]] = []
+
+            with patch.object(
+                service,
+                "_prewarm_thumbnails",
+                side_effect=lambda paths: synchronous_batches.append([path.name for path in paths]),
+            ), patch.object(
+                service,
+                "_schedule_thumbnail_prewarm",
+                side_effect=lambda paths: queued_batches.append([path.name for path in paths]),
+            ):
+                payload = service.search_text("cat", limit=6)
+
+            self.assertEqual(len(payload["results"]), 6)
+            self.assertEqual(len(synchronous_batches), 1)
+            self.assertEqual(len(synchronous_batches[0]), 5)
+            self.assertEqual(len(queued_batches), 1)
+            self.assertEqual(len(queued_batches[0]), 1)
+
+    def test_stage2_rebuild_progress_is_published_during_reindex(self):
+        with tempfile.TemporaryDirectory(prefix="sg-desktop-service-") as tmp_dir:
+            root = Path(tmp_dir)
+            folder = root / "gallery"
+            self._write_image(folder / "cat.jpg")
+
+            service = self._build_service(root)
+            service.stage2_job = FakeStage2Job()
+            service.set_active_folder(folder.as_posix())
+
+            published: list[dict[str, object]] = []
+
+            def fake_reconcile(*args, **kwargs):
+                del args
+                emit_progress = kwargs.get("emit_progress")
+                if emit_progress is None:
+                    return
+                emit_progress(
+                    {
+                        "phase": "start",
+                        "current": 0,
+                        "total": 4,
+                        "embeddedCount": 0,
+                        "reusedCount": 0,
+                        "message": "Scanning the selected folder for index updates.",
+                    }
+                )
+                emit_progress(
+                    {
+                        "phase": "progress",
+                        "current": 2,
+                        "total": 4,
+                        "embeddedCount": 1,
+                        "reusedCount": 1,
+                        "message": "Indexing cat.jpg (2/4)",
+                    }
+                )
+                emit_progress(
+                    {
+                        "phase": "finish",
+                        "current": 4,
+                        "total": 4,
+                        "embeddedCount": 1,
+                        "reusedCount": 1,
+                        "message": "The folder index is ready.",
+                    }
+                )
+
+            with patch.object(service, "_publish_stage2_progress", wraps=service._publish_stage2_progress) as publish_mock:
+                with patch("desktop_runtime.service.reconcile_folder", side_effect=fake_reconcile):
+                    service.run_stage2_for_active_folder()
+
+            published = [call.args[0] for call in publish_mock.call_args_list]
+            self.assertIn("reindex", [payload["phase"] for payload in published])
+            running_reindex = [payload for payload in published if payload["phase"] == "reindex" and payload["status"] == "running"]
+            self.assertTrue(running_reindex)
+            self.assertIn(
+                (2, 4),
+                [(payload["phaseCurrent"], payload["phaseTotal"]) for payload in running_reindex],
+            )
+            self.assertEqual(running_reindex[-1]["phaseCurrent"], 4)
+            self.assertEqual(running_reindex[-1]["phaseTotal"], 4)
 
 
 if __name__ == "__main__":

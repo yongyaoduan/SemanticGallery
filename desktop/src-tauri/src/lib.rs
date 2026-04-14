@@ -1,4 +1,7 @@
+mod desktop_core;
+
 use std::env;
+use std::ffi::OsStr;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::net::TcpListener;
@@ -9,7 +12,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
@@ -21,6 +24,11 @@ const RUNTIME_READY_EVENT: &str = "semanticgallery://runtime-ready";
 const SETUP_LOG_LIMIT: usize = 24;
 const START_FAILURE_LOG_CONTEXT_LIMIT: usize = 6;
 const UNINSTALLER_APP_NAME: &str = "Uninstall SemanticGallery.app";
+const AUTOMATION_TOOLS_ENV: &str = "SEMANTICGALLERY_AUTOMATION_TOOLS";
+const AUTOMATION_TOOLS_TEST_MODE_ARG: &str = "--semanticgallery-test-mode";
+const AUTOMATION_REQUEST_FILE: &str = "automation-request.json";
+const AUTOMATION_RESPONSE_FILE: &str = "automation-response.json";
+const AUTOMATION_POLL_INTERVAL_MS: u64 = 150;
 const TEMPLATE_ENTRIES: [&str; 6] = [
     "desktop_runtime",
     "deployment",
@@ -44,6 +52,28 @@ struct SetupStepSnapshot {
     task: String,
     label: String,
     status: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum AutomationRequestKind {
+    SelectFolder,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AutomationRequest {
+    id: String,
+    kind: AutomationRequestKind,
+    folder_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AutomationResponse {
+    id: String,
+    status: String,
+    message: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -122,8 +152,63 @@ fn onboarding_marker_path(app_data_dir: &Path) -> PathBuf {
     app_data_dir.join("onboarding-complete")
 }
 
+fn automation_tools_marker_path(app_data_dir: &Path) -> PathBuf {
+    app_data_dir.join("automation-tools-enabled")
+}
+
+fn automation_request_path(app_data_dir: &Path) -> PathBuf {
+    app_data_dir.join(AUTOMATION_REQUEST_FILE)
+}
+
+fn automation_response_path(app_data_dir: &Path) -> PathBuf {
+    app_data_dir.join(AUTOMATION_RESPONSE_FILE)
+}
+
+fn automation_tools_enabled_for_dir(app_data_dir: &Path) -> bool {
+    automation_tools_marker_path(app_data_dir).is_file()
+        || automation_tools_env_value_enabled(env::var_os(AUTOMATION_TOOLS_ENV).as_deref())
+        || automation_tools_enabled_from_args(env::args_os())
+}
+
+fn automation_tools_env_value_enabled(value: Option<&OsStr>) -> bool {
+    value.is_some_and(|raw| {
+        let normalized = raw.to_string_lossy().trim().to_ascii_lowercase();
+        !normalized.is_empty() && normalized != "0" && normalized != "false" && normalized != "no"
+    })
+}
+
+fn automation_tools_enabled_from_args<I, S>(args: I) -> bool
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    args.into_iter()
+        .any(|arg| arg.as_ref().to_string_lossy() == AUTOMATION_TOOLS_TEST_MODE_ARG)
+}
+
 fn runtime_ready_marker_path(app_data_dir: &Path) -> PathBuf {
     app_data_dir.join("runtime-ready")
+}
+
+fn take_automation_request(path: &Path) -> Result<Option<AutomationRequest>, String> {
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let raw = fs::read_to_string(path)
+        .map_err(|error| format!("Failed to read {}: {error}", path.display()))?;
+    fs::remove_file(path).map_err(|error| format!("Failed to clear {}: {error}", path.display()))?;
+    if raw.trim().is_empty() {
+        return Ok(None);
+    }
+    serde_json::from_str(&raw)
+        .map(Some)
+        .map_err(|error| format!("Failed to parse {}: {error}", path.display()))
+}
+
+fn write_automation_response(path: &Path, response: &AutomationResponse) -> Result<(), String> {
+    let encoded =
+        serde_json::to_vec(response).map_err(|error| format!("Failed to encode the automation response: {error}"))?;
+    fs::write(path, encoded).map_err(|error| format!("Failed to write {}: {error}", path.display()))
 }
 
 fn runtime_files_look_ready(app_data_dir: &Path) -> bool {
@@ -318,6 +403,81 @@ fn bootstrap_snapshot(state: &SidecarState) -> BootstrapSnapshot {
         .expect("sidecar runtime lock poisoned")
         .bootstrap
         .clone()
+}
+
+fn run_automation_request(app: &AppHandle, request: AutomationRequest) -> Result<AutomationResponse, String> {
+    match request.kind {
+        AutomationRequestKind::SelectFolder => {
+            let folder_path = request
+                .folder_path
+                .as_deref()
+                .ok_or_else(|| "The automation request did not include a folder path.".to_string())?;
+            let base_url = ensure_sidecar(&app, app.state::<SidecarState>().inner())?;
+            let payload = desktop_core::automation_select_folder(
+                app.state::<desktop_core::DesktopCoreState>().inner.clone(),
+                app,
+                &base_url,
+                folder_path,
+            )?;
+            Ok(AutomationResponse {
+                id: request.id,
+                status: "ok".into(),
+                message: format!(
+                    "Loaded {} (refreshed={}, skipped={}).",
+                    payload.runtime.active_folder.unwrap_or_else(|| folder_path.to_string()),
+                    payload.refreshed,
+                    payload.skipped
+                ),
+            })
+        }
+    }
+}
+
+fn spawn_automation_request_watcher(app: &AppHandle) -> Result<(), String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Failed to resolve the app support directory: {error}"))?;
+    if !automation_tools_enabled_for_dir(&app_data_dir) {
+        return Ok(());
+    }
+
+    fs::create_dir_all(&app_data_dir)
+        .map_err(|error| format!("Failed to create {}: {error}", app_data_dir.display()))?;
+    let request_path = automation_request_path(&app_data_dir);
+    let response_path = automation_response_path(&app_data_dir);
+    let _ = fs::remove_file(&request_path);
+    let _ = fs::remove_file(&response_path);
+    let app_handle = app.clone();
+
+    thread::spawn(move || loop {
+        match take_automation_request(&request_path) {
+            Ok(Some(request)) => {
+                let response = match run_automation_request(&app_handle, request.clone()) {
+                    Ok(response) => response,
+                    Err(message) => AutomationResponse {
+                        id: request.id,
+                        status: "error".into(),
+                        message,
+                    },
+                };
+                let _ = write_automation_response(&response_path, &response);
+            }
+            Ok(None) => {}
+            Err(message) => {
+                let _ = write_automation_response(
+                    &response_path,
+                    &AutomationResponse {
+                        id: "automation-request".into(),
+                        status: "error".into(),
+                        message,
+                    },
+                );
+            }
+        }
+        thread::sleep(Duration::from_millis(AUTOMATION_POLL_INTERVAL_MS));
+    });
+    Ok(())
 }
 
 fn cancellation_requested(shared: &Arc<SidecarShared>) -> bool {
@@ -1179,11 +1339,32 @@ fn open_uninstaller(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn desktop_automation_tools_enabled(app: AppHandle) -> Result<bool, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| format!("Failed to resolve the app support directory: {error}"))?;
+    Ok(automation_tools_enabled_for_dir(&app_data_dir))
+}
+
 pub fn run() {
     let app = tauri::Builder::default()
+        .manage(desktop_core::DesktopCoreState::default())
         .manage(SidecarState::default())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
+            desktop_core::desktop_delete_image,
+            desktop_core::desktop_delete_images,
+            desktop_core::desktop_metadata,
+            desktop_core::desktop_refresh_folder,
+            desktop_core::desktop_run_stage2,
+            desktop_core::desktop_runtime_status,
+            desktop_core::desktop_search_similar,
+            desktop_core::desktop_search_text,
+            desktop_core::desktop_search_uploaded_image,
+            desktop_core::desktop_select_folder,
+            desktop_automation_tools_enabled,
             pick_folder,
             cancel_runtime_setup,
             complete_onboarding,
@@ -1192,6 +1373,10 @@ pub fn run() {
             start_runtime,
             sidecar_base_url
         ])
+        .setup(|app| {
+            spawn_automation_request_watcher(app.handle())?;
+            Ok(())
+        })
         .build(tauri::generate_context!())
         .expect("failed to build SemanticGallery desktop shell");
 
@@ -1208,12 +1393,15 @@ pub fn run() {
 mod tests {
     use super::{
         apply_setup_progress, build_bootstrap_args, build_sidecar_env, build_start_failure_message,
-        command_matches_sidecar, complete_onboarding_snapshot, copy_file,
+        automation_tools_enabled_for_dir, automation_tools_enabled_from_args,
+        automation_tools_env_value_enabled, automation_tools_marker_path, command_matches_sidecar,
+        complete_onboarding_snapshot, copy_file,
         locate_runtime_template_root, normalize_setup_log_line, onboarding_marker_path,
         onboarding_required_for_dir, parse_setup_payload, parse_sidecar_port, runtime_files_look_ready,
         runtime_ready_for_dir, runtime_ready_marker_path, setup_steps,
         stage_uninstaller_for_self_removal, sync_runtime_template, SidecarRuntime,
     };
+    use std::ffi::OsStr;
     use std::fs;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -1510,6 +1698,37 @@ mod tests {
 
         assert!(!snapshot.onboarding_required);
         assert_eq!(snapshot.status, "idle");
+    }
+
+    #[test]
+    fn automation_tools_flag_tracks_the_marker_file() {
+        let root = temp_root("automation-tools");
+        assert!(!automation_tools_enabled_for_dir(&root));
+        fs::write(automation_tools_marker_path(&root), "ready").expect("failed to write automation marker");
+        assert!(automation_tools_enabled_for_dir(&root));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn automation_tools_flag_accepts_the_test_mode_argument() {
+        assert!(automation_tools_enabled_from_args([
+            "/Applications/SemanticGallery.app/Contents/MacOS/semanticgallery_desktop",
+            "--semanticgallery-test-mode",
+        ]));
+        assert!(!automation_tools_enabled_from_args([
+            "/Applications/SemanticGallery.app/Contents/MacOS/semanticgallery_desktop",
+            "--other-flag",
+        ]));
+    }
+
+    #[test]
+    fn automation_tools_flag_accepts_truthy_environment_values() {
+        assert!(automation_tools_env_value_enabled(Some(OsStr::new("1"))));
+        assert!(automation_tools_env_value_enabled(Some(OsStr::new("true"))));
+        assert!(automation_tools_env_value_enabled(Some(OsStr::new("yes"))));
+        assert!(!automation_tools_env_value_enabled(Some(OsStr::new("0"))));
+        assert!(!automation_tools_env_value_enabled(Some(OsStr::new("false"))));
+        assert!(!automation_tools_env_value_enabled(None::<&OsStr>));
     }
 
     #[test]

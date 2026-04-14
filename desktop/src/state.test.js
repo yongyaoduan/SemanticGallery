@@ -40,6 +40,8 @@ describe("desktop state", () => {
         phase: "adapt",
         current: 4,
         total: 12,
+        phaseCurrent: 2,
+        phaseTotal: 10,
         startedAtMs: 5678,
         elapsedSeconds: 30,
         remainingSeconds: 60,
@@ -64,6 +66,8 @@ describe("desktop state", () => {
     expect(state.indexing.message).toBe("Indexing cat.jpg (3/10)");
     expect(state.stage2.current).toBe(4);
     expect(state.stage2.total).toBe(12);
+    expect(state.stage2.phaseCurrent).toBe(2);
+    expect(state.stage2.phaseTotal).toBe(10);
     expect(state.stage2.startedAtMs).toBe(5678);
     expect(state.stage2.elapsedSeconds).toBe(30);
     expect(state.stage2.remainingSeconds).toBe(60);

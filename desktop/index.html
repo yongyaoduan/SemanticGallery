@@ -156,6 +156,23 @@
               </label>
               <button type="submit" class="search-submit">Search</button>
             </form>
+            <div id="automation-image-shell" class="automation-shell automation-inline" hidden>
+              <input
+                id="automation-image-input"
+                class="automation-input"
+                type="text"
+                placeholder="Image path"
+                aria-label="Image path"
+              />
+              <button
+                id="automation-image-submit"
+                class="secondary-button"
+                type="button"
+                title="Load image path"
+              >
+                Load Image Path
+              </button>
+            </div>
           </section>
 
           <section class="workspace-card results-card">
@@ -254,7 +271,27 @@
             <p class="status-label">Current folder</p>
             <p id="settings-folder-value" class="settings-value">No folder selected</p>
             <button id="choose-folder-button" class="primary-button" type="button">Choose Folder</button>
-            <div class="settings-progress">
+            <div id="automation-folder-shell" class="automation-shell" hidden>
+              <p class="settings-help">Load a folder path directly.</p>
+              <div class="automation-inline">
+                <input
+                  id="automation-folder-input"
+                  class="automation-input"
+                  type="text"
+                  placeholder="Folder path"
+                  aria-label="Folder path"
+                />
+                <button
+                  id="automation-folder-submit"
+                  class="secondary-button"
+                  type="button"
+                  title="Load folder path"
+                >
+                  Load Folder Path
+                </button>
+              </div>
+            </div>
+            <div id="settings-index-progress-shell" class="settings-progress">
               <div class="panel-header">
                 <span>Index progress</span>
                 <span id="settings-index-progress-label">0 / 0</span>
@@ -275,7 +312,8 @@
             <p class="status-label">Stage 2 adaptation</p>
             <p class="settings-help">Requires at least 100 supported images.</p>
             <button id="run-stage2-button" class="secondary-button" type="button">Run Stage 2</button>
-            <div class="settings-progress">
+            <p id="settings-stage2-feedback" class="settings-help" hidden></p>
+            <div id="settings-stage2-progress-shell" class="settings-progress">
               <div class="panel-header">
                 <span>Adaptation progress</span>
                 <span id="settings-stage2-progress-label">0%</span>
@@ -289,6 +327,7 @@
                 <span id="settings-stage2-progress-eta"></span>
               </div>
               <p id="settings-stage2-message" class="settings-help">Stage 2 adaptation is idle.</p>
+              <div id="settings-stage2-step-list" class="setup-step-list settings-step-list"></div>
             </div>
           </section>
 
@@ -309,7 +348,7 @@
             <path d="M5 12l5 5l9 -9" />
           </svg>
         </span>
-        <img class="result-thumb" loading="lazy" alt="" />
+        <img class="result-thumb" alt="" />
       </button>
     </template>
 

@@ -64,6 +64,29 @@ class SearchViewTests(unittest.TestCase):
         self.assertEqual(reduced.matrix.shape, (2, 2))
         self.assertEqual(reduced.search(np.asarray([0.0, 1.0], dtype=np.float32), limit=2), ["/tmp/folder-a/three.jpg", "/tmp/folder-a/one.jpg"])
 
+    def test_active_search_view_precomputes_normalized_matrix(self):
+        view = ActiveSearchView(
+            paths=["/tmp/folder-a/one.jpg", "/tmp/folder-a/two.jpg"],
+            matrix=np.asarray(
+                [
+                    [3.0, 4.0],
+                    [0.0, 0.0],
+                ],
+                dtype=np.float32,
+            ),
+        )
+
+        np.testing.assert_allclose(
+            view._normalized_matrix,
+            np.asarray(
+                [
+                    [0.6, 0.8],
+                    [0.0, 0.0],
+                ],
+                dtype=np.float32,
+            ),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

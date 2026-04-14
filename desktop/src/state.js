@@ -96,6 +96,8 @@ export function createInitialState() {
       phase: "idle",
       current: 0,
       total: 0,
+      phaseCurrent: 0,
+      phaseTotal: 0,
       startedAtMs: null,
       elapsedSeconds: 0,
       remainingSeconds: null,

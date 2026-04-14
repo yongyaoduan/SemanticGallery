@@ -10,9 +10,17 @@ class ActiveSearchView:
     paths: list[str]
     matrix: np.ndarray
     _index_by_path: dict[str, int] = field(default_factory=dict, init=False, repr=False)
+    _normalized_matrix: np.ndarray = field(default_factory=lambda: np.zeros((0, 0), dtype=np.float32), init=False, repr=False)
 
     def __post_init__(self) -> None:
         self._index_by_path = {path: index for index, path in enumerate(self.paths)}
+        matrix = np.asarray(self.matrix, dtype=np.float32)
+        if matrix.ndim != 2 or matrix.size == 0:
+            self._normalized_matrix = np.zeros_like(matrix, dtype=np.float32)
+            return
+        row_norms = np.linalg.norm(matrix, axis=1, keepdims=True)
+        safe_norms = np.where(row_norms == 0.0, 1.0, row_norms)
+        self._normalized_matrix = (matrix / safe_norms).astype(np.float32, copy=False)
 
     @classmethod
     def from_store(cls, store, folder_path: str, encoder_signature: str) -> "ActiveSearchView":
@@ -35,14 +43,12 @@ class ActiveSearchView:
             return []
 
         query = np.asarray(query_vector, dtype=np.float32)
-        matrix = np.asarray(self.matrix, dtype=np.float32)
         query_norm = float(np.linalg.norm(query))
         if query_norm == 0.0:
             return []
 
-        row_norms = np.linalg.norm(matrix, axis=1)
-        safe_norms = np.where(row_norms == 0.0, 1.0, row_norms)
-        scores = (matrix @ query) / (safe_norms * query_norm)
+        normalized_query = query / query_norm
+        scores = self._normalized_matrix @ normalized_query
         order = np.argsort(scores)[::-1]
         results: list[str] = []
         for index in order:

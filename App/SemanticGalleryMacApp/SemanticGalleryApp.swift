@@ -1,5 +1,6 @@
 import SwiftUI
 import SemanticGalleryCore
+import SemanticGalleryPersistence
 import SemanticGallerySettings
 
 @main
@@ -7,6 +8,7 @@ struct SemanticGalleryApp: App {
     @State private var container = AppContainer()
     private let folderPickerCoordinator = FolderPickerCoordinator()
     private let folderPreparationCoordinator = FolderPreparationCoordinator()
+    private let uninstallCoordinator = UninstallCoordinator()
 
     var body: some Scene {
         WindowGroup {
@@ -22,7 +24,7 @@ struct SemanticGalleryApp: App {
                 statusStore: container.statusStore,
                 libraryStateStore: container.libraryStateStore,
                 chooseFolder: chooseFolder,
-                startUninstall: {}
+                startUninstall: startUninstall
             )
         }
     }
@@ -49,6 +51,23 @@ struct SemanticGalleryApp: App {
                 container.statusStore.status = .ready
                 container.libraryStateStore.folderPreparationProgress = []
             }
+        }
+    }
+
+    @MainActor
+    private func startUninstall() {
+        container.statusStore.status = .uninstalling
+
+        do {
+            try uninstallCoordinator.removeArtifacts(
+                paths: AppPaths(),
+                selectedFolder: container.libraryStateStore.selectedFolder
+            )
+            container.libraryStateStore.selectedFolder = nil
+            container.libraryStateStore.folderPreparationProgress = []
+            container.statusStore.status = .installRequired
+        } catch {
+            container.statusStore.status = .installFailed("Unable to remove SemanticGallery data.")
         }
     }
 }

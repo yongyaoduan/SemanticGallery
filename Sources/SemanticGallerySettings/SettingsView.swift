@@ -7,6 +7,7 @@ public struct SettingsView: View {
     @Bindable private var libraryStateStore: LibraryStateStore
     private let chooseFolder: () -> Void
     private let startUninstall: () -> Void
+    @State private var showUninstallConfirmation = false
 
     public init(
         statusStore: AppStatusStore,
@@ -71,7 +72,9 @@ public struct SettingsView: View {
                 }
 
                 SettingsGroupView(title: "Uninstall") {
-                    Button("Uninstall SemanticGallery", role: .destructive, action: startUninstall)
+                    Button("Uninstall SemanticGallery", role: .destructive) {
+                        showUninstallConfirmation = true
+                    }
                         .accessibilityIdentifier("uninstall-button")
                 }
             }
@@ -79,6 +82,17 @@ public struct SettingsView: View {
         }
         .frame(minWidth: 720, minHeight: 560)
         .background(MuseumPaperTheme.backgroundTop)
+        .confirmationDialog(
+            "Uninstall SemanticGallery?",
+            isPresented: $showUninstallConfirmation,
+            actions: {
+                Button("Remove App Data", role: .destructive, action: startUninstall)
+                Button("Cancel", role: .cancel) {}
+            },
+            message: {
+                Text("This removes app data, downloaded models, caches, and bookmarks, but it keeps your photo folders.")
+            }
+        )
     }
 
     private var overallProgress: Double {

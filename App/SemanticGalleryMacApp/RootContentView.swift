@@ -1,10 +1,13 @@
 import SwiftUI
 import SemanticGalleryCore
 import SemanticGalleryInstall
+import SemanticGallerySettings
 import SemanticGalleryUI
 
 struct RootContentView: View {
     @Bindable var statusStore: AppStatusStore
+    @Bindable var libraryStateStore: LibraryStateStore
+    let chooseFolder: () -> Void
 
     var body: some View {
         Group {
@@ -33,6 +36,21 @@ struct RootContentView: View {
                     .foregroundStyle(MuseumPaperTheme.ink)
                 Text("The search workspace appears after folder selection. Settings also opens the folder picker.")
                     .foregroundStyle(MuseumPaperTheme.mutedInk)
+                if let selectedFolder = libraryStateStore.selectedFolder {
+                    Text(selectedFolder.path(percentEncoded: false))
+                        .foregroundStyle(MuseumPaperTheme.mutedInk)
+                }
+                HStack(spacing: 12) {
+                    Button("Choose Folder", action: chooseFolder)
+                        .buttonStyle(.borderedProminent)
+                        .tint(MuseumPaperTheme.accent)
+                        .accessibilityIdentifier("choose-folder-button")
+
+                    SettingsLink {
+                        Text("Open Settings")
+                    }
+                    .accessibilityIdentifier("open-settings-button")
+                }
             }
             .padding(32)
             .background(

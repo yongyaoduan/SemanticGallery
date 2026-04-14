@@ -8,12 +8,13 @@ let package = Package(
         .library(name: "SemanticGalleryCore", targets: ["SemanticGalleryCore"]),
         .library(name: "SemanticGalleryPersistence", targets: ["SemanticGalleryPersistence"]),
         .library(name: "SemanticGalleryInstall", targets: ["SemanticGalleryInstall"]),
+        .library(name: "SemanticGalleryUI", targets: ["SemanticGalleryUI"]),
         .executable(name: "SemanticGalleryMacApp", targets: ["SemanticGalleryMacApp"]),
     ],
     targets: [
         .executableTarget(
             name: "SemanticGalleryMacApp",
-            dependencies: ["SemanticGalleryCore"],
+            dependencies: ["SemanticGalleryCore", "SemanticGalleryInstall", "SemanticGalleryUI"],
             path: "App/SemanticGalleryMacApp"
         ),
         .target(
@@ -26,8 +27,12 @@ let package = Package(
         ),
         .target(
             name: "SemanticGalleryInstall",
-            dependencies: ["SemanticGalleryPersistence"],
+            dependencies: ["SemanticGalleryCore", "SemanticGalleryPersistence", "SemanticGalleryUI"],
             path: "Sources/SemanticGalleryInstall"
+        ),
+        .target(
+            name: "SemanticGalleryUI",
+            path: "Sources/SemanticGalleryUI"
         ),
         .testTarget(
             name: "SemanticGalleryCoreTests",

@@ -13,6 +13,7 @@ public struct SettingsGroupView<Content: View>: View {
         VStack(alignment: .leading, spacing: 14) {
             Text(title.uppercased())
                 .font(.system(size: 12, weight: .semibold, design: .default))
+                .tracking(1.1)
                 .foregroundStyle(MuseumPaperTheme.mutedInk)
 
             VStack(alignment: .leading, spacing: 12) {
@@ -23,6 +24,11 @@ public struct SettingsGroupView<Content: View>: View {
             .background(
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
                     .fill(MuseumPaperTheme.panel)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .stroke(MuseumPaperTheme.line, lineWidth: 1)
+                    )
+                    .shadow(color: MuseumPaperTheme.ink.opacity(0.06), radius: 18, y: 10)
             )
         }
     }

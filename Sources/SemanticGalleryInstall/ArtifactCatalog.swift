@@ -5,8 +5,6 @@ public extension ArtifactCatalog {
             relativePath: "mlx/siglip2-base-patch16-224-f32",
             requiredFiles: [
                 "config.json",
-                "model.safetensors",
-                "model.safetensors.index.json",
                 "tokenizer.json",
                 "tokenizer_config.json",
                 "special_tokens_map.json",
@@ -23,6 +21,7 @@ public extension ArtifactCatalog {
         ),
         publicAnchor: RemoteArtifact(
             repositoryID: "Lucas20250626/semanticgallery-stage2-public-anchor",
+            repositoryType: .dataset,
             relativePath: "semanticgallery/stage2_public_anchor",
             requiredFiles: [
                 "semanticgallery-stage2-public-anchor.tar.gz",

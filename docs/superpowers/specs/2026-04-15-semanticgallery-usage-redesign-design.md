@@ -26,7 +26,7 @@ The redesign should stay inside these files unless a small support type is requi
 - `Sources/SemanticGallerySearch/WorkspaceStateStore.swift`
 - `Sources/SemanticGalleryAppShell/SemanticGalleryController.swift`
 - `Sources/SemanticGallerySearch/ThumbnailStore.swift` when preview image reuse needs a shared path
-- `App/SemanticGalleryMacAppUITests/PhaseAFlowTests.swift`
+- `App/SemanticGalleryUITests/PhaseAFlowTests.swift`
 - `Tests/SemanticGalleryAppShellTests/SemanticGalleryControllerTests.swift`
 
 The workspace state needs explicit fields for the new interaction model:
@@ -215,7 +215,7 @@ The redesign must add or update real tests.
 - select-all toggle switches between full selection and cleared selection
 - delete confirmation appears with the correct file context
 - delete removes files, updates the grid, and leaves the index clean
-- the installed-app run from `/Applications/SemanticGalleryMacApp.app` covers preview, selection mode, and deletion
+- the installed-app run from `/Applications/SemanticGallery.app` covers preview, selection mode, and deletion
 
 ### Visual Validation
 

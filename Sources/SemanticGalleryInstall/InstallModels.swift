@@ -1,12 +1,24 @@
 import Foundation
 
+public enum ArtifactRepositoryType: Equatable, Sendable {
+    case model
+    case dataset
+}
+
 public struct RemoteArtifact: Equatable, Sendable {
     public let repositoryID: String
+    public let repositoryType: ArtifactRepositoryType
     public let relativePath: String
     public let requiredFiles: [String]
 
-    public init(repositoryID: String, relativePath: String, requiredFiles: [String]) {
+    public init(
+        repositoryID: String,
+        repositoryType: ArtifactRepositoryType = .model,
+        relativePath: String,
+        requiredFiles: [String]
+    ) {
         self.repositoryID = repositoryID
+        self.repositoryType = repositoryType
         self.relativePath = relativePath
         self.requiredFiles = requiredFiles
     }

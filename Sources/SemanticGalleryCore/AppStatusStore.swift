@@ -5,7 +5,7 @@ import Observation
 public final class AppStatusStore {
     public var status: AppStatus
 
-    public init(status: AppStatus = .installRequired) {
+    public init(status: AppStatus = .readyWithoutFolder) {
         self.status = status
     }
 }

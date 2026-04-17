@@ -4,7 +4,9 @@ public enum AppStatus: Equatable, Sendable {
     case installFailed(String)
     case installComplete
     case readyWithoutFolder
-    case preparingFolder
+    case indexing
+    case searching
+    case training
     case ready
     case uninstalling
 }

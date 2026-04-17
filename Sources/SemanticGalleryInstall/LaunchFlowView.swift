@@ -15,7 +15,7 @@ public enum LaunchFlowScreen: Equatable {
             self = .progress
         case .installComplete:
             self = .completion
-        case .readyWithoutFolder, .preparingFolder, .ready:
+        case .readyWithoutFolder, .indexing, .searching, .training, .ready:
             self = .intro
         }
     }
@@ -23,9 +23,20 @@ public enum LaunchFlowScreen: Equatable {
 
 public struct LaunchFlowView: View {
     @Bindable private var statusStore: AppStatusStore
+    @Bindable private var installationStateStore: InstallationStateStore
+    private let startInstallation: () -> Void
+    private let enterApp: () -> Void
 
-    public init(statusStore: AppStatusStore) {
+    public init(
+        statusStore: AppStatusStore,
+        installationStateStore: InstallationStateStore,
+        startInstallation: @escaping () -> Void,
+        enterApp: @escaping () -> Void
+    ) {
         self.statusStore = statusStore
+        self.installationStateStore = installationStateStore
+        self.startInstallation = startInstallation
+        self.enterApp = enterApp
     }
 
     public var body: some View {
@@ -39,19 +50,20 @@ public struct LaunchFlowView: View {
 
             switch LaunchFlowScreen(status: statusStore.status) {
             case .intro:
-                LaunchIntroView {
-                    statusStore.status = .installing
-                }
+                LaunchIntroView(errorMessage: installFailureMessage, startInstallation: startInstallation)
             case .progress:
-                LaunchProgressView {
-                    statusStore.status = .installComplete
-                }
+                LaunchProgressView(progress: installationStateStore.progress)
             case .completion:
-                LaunchCompletionView {
-                    statusStore.status = .readyWithoutFolder
-                }
+                LaunchCompletionView(enterApp: enterApp)
             }
         }
+    }
+
+    private var installFailureMessage: String? {
+        guard case let .installFailed(message) = statusStore.status else {
+            return nil
+        }
+        return message
     }
 }
 
@@ -71,6 +83,10 @@ private struct LaunchShell<Content: View>: View {
         .background(
             RoundedRectangle(cornerRadius: 32, style: .continuous)
                 .fill(MuseumPaperTheme.panel)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 32, style: .continuous)
+                        .stroke(MuseumPaperTheme.line, lineWidth: 1)
+                )
                 .shadow(color: .black.opacity(0.08), radius: 28, y: 18)
         )
         .padding(48)
@@ -78,79 +94,250 @@ private struct LaunchShell<Content: View>: View {
 }
 
 private struct LaunchIntroView: View {
+    let errorMessage: String?
     let startInstallation: () -> Void
 
     var body: some View {
         LaunchShell {
-            VStack(alignment: .leading, spacing: 18) {
-                Text("SemanticGallery")
-                    .font(.system(size: 18, weight: .medium, design: .serif))
-                    .foregroundStyle(MuseumPaperTheme.mutedInk)
-
-                Text("Install a local semantic photo library.")
+            VStack(alignment: .leading, spacing: 20) {
+                Text("Prepare SemanticGallery on this Mac")
                     .font(.system(size: 42, weight: .semibold, design: .serif))
                     .foregroundStyle(MuseumPaperTheme.ink)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("launch-intro-headline")
 
-                Text("SemanticGallery prepares a local workspace, the SigLIP2 model, the Stage 1 retrieval weights, and the public anchor dataset before you start searching.")
-                    .font(.system(size: 18))
-                    .foregroundStyle(MuseumPaperTheme.mutedInk)
-                    .frame(maxWidth: 620, alignment: .leading)
+                VStack(alignment: .leading, spacing: 12) {
+                    introInstallRow(title: "Lucas-tuned SigLIP2 encoder", detail: "For the first semantic index")
+                    introInstallRow(title: "Shared configuration", detail: "Tokenizer, preprocessing, and metadata")
+                    introInstallRow(title: "Reference image set", detail: "For the shared starting point")
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("launch-intro-install-list")
 
-                Button("Start Installation", action: startInstallation)
-                    .buttonStyle(.borderedProminent)
-                    .tint(MuseumPaperTheme.accent)
-                    .controlSize(.large)
-                    .accessibilityIdentifier("start-installation-button")
+                HStack(spacing: 14) {
+                    Button("Start Installation", action: startInstallation)
+                        .buttonStyle(.borderedProminent)
+                        .tint(MuseumPaperTheme.accent)
+                        .controlSize(.large)
+                        .accessibilityIdentifier("start-installation-button")
+
+                    Text("Nothing leaves this Mac after setup finishes.")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(MuseumPaperTheme.mutedInk)
+                        .accessibilityIdentifier("launch-intro-privacy-note")
+                }
+
+                if let errorMessage {
+                    Text(errorMessage)
+                        .foregroundStyle(Color(red: 0.63, green: 0.26, blue: 0.20))
+                        .accessibilityIdentifier("install-error-message")
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private func introInstallRow(title: String, detail: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Circle()
+                .fill(MuseumPaperTheme.accent)
+                .frame(width: 8, height: 8)
+                .padding(.top, 6)
+
+            VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(MuseumPaperTheme.ink)
+            Text(detail)
+                .font(.system(size: 14))
+                .foregroundStyle(MuseumPaperTheme.mutedInk)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
 private struct LaunchProgressView: View {
-    let finishInstallation: () -> Void
+    let progress: [InstallProgress]
 
     var body: some View {
-        LaunchShell {
-            VStack(alignment: .leading, spacing: 22) {
-                Text("Installing SemanticGallery")
-                    .font(.system(size: 38, weight: .semibold, design: .serif))
-                    .foregroundStyle(MuseumPaperTheme.ink)
+        TimelineView(.periodic(from: .now, by: 0.1)) { timeline in
+            LaunchShell {
+                VStack(alignment: .leading, spacing: 22) {
+                    Text("Installing SemanticGallery")
+                        .font(.system(size: 38, weight: .semibold, design: .serif))
+                        .foregroundStyle(MuseumPaperTheme.ink)
 
-                Text("The install screen and the settings progress views share the same visual language.")
-                    .foregroundStyle(MuseumPaperTheme.mutedInk)
+                    Text("Preparing the local encoder, shared config, and reference data on this Mac.")
+                        .foregroundStyle(MuseumPaperTheme.mutedInk)
 
-                LayeredProgressBar(progress: 0.66)
-                    .frame(height: 12)
+                    progressSummaryCard(now: timeline.date)
 
-                VStack(spacing: 14) {
-                    progressRow(title: "Prepare directories", progress: 1.0, caption: "Done")
-                    progressRow(title: "Download base model", progress: 0.82, caption: "2m left")
-                    progressRow(title: "Download public anchor", progress: 0.24, caption: "Queued")
+                    LayeredProgressBar(progress: overallProgress(now: timeline.date), isActive: true)
+                        .frame(height: 12)
+
+                    VStack(spacing: 14) {
+                        ForEach(InstallStep.allCases, id: \.self) { step in
+                            let item = progress(for: step, now: timeline.date)
+                            let display = liveDisplay(for: item, now: timeline.date)
+                            progressRow(
+                                step: step,
+                                title: step.title,
+                                progress: display.progress,
+                                caption: item.message,
+                                timing: timingText(for: item, now: timeline.date),
+                                isActive: currentProgressItem(now: timeline.date).step == step
+                            )
+                        }
+                    }
                 }
-
-                Button("Mark Installation Complete", action: finishInstallation)
-                    .buttonStyle(.borderedProminent)
-                    .tint(MuseumPaperTheme.accent)
-                    .controlSize(.large)
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("launch-progress-screen")
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .accessibilityIdentifier("launch-progress-screen")
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
-    private func progressRow(title: String, progress: Double, caption: String) -> some View {
+    private func progressRow(
+        step: InstallStep,
+        title: String,
+        progress: Double,
+        caption: String,
+        timing: String?,
+        isActive: Bool
+    ) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(title)
                     .foregroundStyle(MuseumPaperTheme.ink)
                 Spacer()
-                Text(caption)
-                    .foregroundStyle(MuseumPaperTheme.mutedInk)
+                if let timing {
+                    Text(timing)
+                        .monospacedDigit()
+                        .foregroundStyle(MuseumPaperTheme.mutedInk)
+                }
             }
-            LayeredProgressBar(progress: progress)
+            Text(caption)
+                .font(.system(size: 12))
+                .foregroundStyle(MuseumPaperTheme.mutedInk)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            LayeredProgressBar(progress: progress, isActive: isActive)
                 .frame(height: 10)
         }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(MuseumPaperTheme.backgroundTop.opacity(isActive || progress > 0 ? 0.48 : 0.28))
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("install-step-\(step.accessibilityKey)")
+    }
+
+    private func progressSummaryCard(now: Date) -> some View {
+        let presentation = InstallProgressPresentation(progress: progress, now: now)
+        let item = presentation.currentProgressItem
+        return HStack(alignment: .top, spacing: 18) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Current stage")
+                    .font(.system(size: 11, weight: .semibold))
+                    .tracking(1.2)
+                    .foregroundStyle(MuseumPaperTheme.mutedInk)
+                Text(item.step.title)
+                    .font(.system(size: 24, weight: .semibold, design: .serif))
+                    .foregroundStyle(MuseumPaperTheme.ink)
+                Text(item.message)
+                    .font(.system(size: 14))
+                    .foregroundStyle(MuseumPaperTheme.mutedInk)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 16)
+
+            VStack(alignment: .trailing, spacing: 8) {
+                Text("\(Int((presentation.overallProgress * 100).rounded()))%")
+                    .font(.system(size: 30, weight: .bold, design: .serif))
+                    .monospacedDigit()
+                    .foregroundStyle(MuseumPaperTheme.accentStrong)
+                Text("\(presentation.currentStepIndex()) of \(InstallStep.allCases.count) sections in motion")
+                    .font(.system(size: 13, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundStyle(MuseumPaperTheme.mutedInk)
+                if let timing = timingText(for: item, now: now) {
+                    Text(timing)
+                        .font(.system(size: 12))
+                        .monospacedDigit()
+                        .foregroundStyle(MuseumPaperTheme.mutedInk)
+                }
+            }
+        }
+        .padding(18)
+        .background(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(MuseumPaperTheme.noteFill.opacity(0.72))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .stroke(MuseumPaperTheme.line, lineWidth: 1)
+                )
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("launch-progress-summary-card")
+    }
+
+    private func overallProgress(now: Date) -> Double {
+        InstallProgressPresentation(progress: progress, now: now).overallProgress
+    }
+
+    private func currentProgressItem(now: Date) -> InstallProgress {
+        InstallProgressPresentation(progress: progress, now: now).currentProgressItem
+    }
+
+    private func currentStepIndex(now: Date) -> Int {
+        InstallProgressPresentation(progress: progress, now: now).currentStepIndex()
+    }
+
+    private func progress(for step: InstallStep, now: Date = .now) -> InstallProgress {
+        InstallProgressPresentation(progress: progress, now: now).progress(for: step)
+    }
+
+    private func timingText(for item: InstallProgress, now: Date) -> String? {
+        let display = liveDisplay(for: item, now: now)
+        switch (display.elapsedSeconds, display.remainingSeconds) {
+        case let (.some(elapsed), .some(remaining)):
+            return "\(format(duration: elapsed)) elapsed · \(format(duration: remaining)) left"
+        case let (.some(elapsed), nil):
+            return "\(format(duration: elapsed)) elapsed"
+        case let (nil, .some(remaining)):
+            return "\(format(duration: remaining)) left"
+        case (nil, nil):
+            return nil
+        }
+    }
+
+    private func format(duration: Int) -> String {
+        let minutes = duration / 60
+        let seconds = duration % 60
+        if minutes == 0 {
+            return "\(seconds)s"
+        }
+        return "\(minutes)m \(seconds)s"
+    }
+
+    private func liveDisplay(for item: InstallProgress, now: Date) -> LiveProgressDisplay {
+        LiveProgressPresentation(
+            progress: item.stepProgress,
+            elapsedSeconds: item.elapsedSeconds,
+            remainingSeconds: item.remainingSeconds,
+            recordedAt: item.recordedAt
+        )
+        .displayed(at: now)
+    }
+}
+
+private extension String {
+    var accessibilitySlug: String {
+        lowercased()
+            .replacingOccurrences(of: " ", with: "-")
+            .replacingOccurrences(of: ".", with: "")
     }
 }
 

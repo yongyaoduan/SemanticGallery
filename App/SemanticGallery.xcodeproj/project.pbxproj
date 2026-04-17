@@ -1,0 +1,431 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A0000000000000000000000A /* SemanticGalleryApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000006 /* SemanticGalleryApp.swift */; };
+		A0000000000000000000000B /* PhaseAFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000007 /* PhaseAFlowTests.swift */; };
+		A0000000000000000000002A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000002B /* Assets.xcassets */; };
+		A00000000000000000000021 /* SemanticGalleryAppShell in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000020 /* SemanticGalleryAppShell */; };
+		A00000000000000000000023 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000022 /* XCTest.framework */; };
+		A00000000000000000000025 /* ArtifactEncodingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000024 /* ArtifactEncodingTests.swift */; };
+		A00000000000000000000026 /* SemanticGalleryML in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000028 /* SemanticGalleryML */; };
+		A00000000000000000000027 /* SemanticGalleryPersistence in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000029 /* SemanticGalleryPersistence */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A0000000000000000000001E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A00000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A00000000000000000000012;
+			remoteInfo = SemanticGallery;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		A00000000000000000000006 /* SemanticGalleryApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticGallery/SemanticGalleryApp.swift; sourceTree = SOURCE_ROOT; };
+		A00000000000000000000007 /* PhaseAFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticGalleryUITests/PhaseAFlowTests.swift; sourceTree = SOURCE_ROOT; };
+		A00000000000000000000008 /* SemanticGallery.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SemanticGallery.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A00000000000000000000009 /* SemanticGalleryUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SemanticGalleryUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A00000000000000000000022 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
+		A00000000000000000000024 /* ArtifactEncodingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticGalleryUITests/ArtifactEncodingTests.swift; sourceTree = SOURCE_ROOT; };
+		A0000000000000000000002B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = SemanticGallery/Assets.xcassets; sourceTree = SOURCE_ROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A0000000000000000000000C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A00000000000000000000021 /* SemanticGalleryAppShell in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A0000000000000000000000F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A00000000000000000000023 /* XCTest.framework in Frameworks */,
+				A00000000000000000000026 /* SemanticGalleryML in Frameworks */,
+				A00000000000000000000027 /* SemanticGalleryPersistence in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A00000000000000000000002 = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000004 /* SemanticGallery */,
+				A00000000000000000000005 /* SemanticGalleryUITests */,
+				A00000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A00000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000008 /* SemanticGallery.app */,
+				A00000000000000000000009 /* SemanticGalleryUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A00000000000000000000004 /* SemanticGallery */ = {
+			isa = PBXGroup;
+			children = (
+				A0000000000000000000002B /* Assets.xcassets */,
+				A00000000000000000000006 /* SemanticGalleryApp.swift */,
+			);
+			sourceTree = "<group>";
+		};
+		A00000000000000000000005 /* SemanticGalleryUITests */ = {
+			isa = PBXGroup;
+			children = (
+				A00000000000000000000024 /* ArtifactEncodingTests.swift */,
+				A00000000000000000000007 /* PhaseAFlowTests.swift */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A00000000000000000000012 /* SemanticGallery */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A00000000000000000000015 /* Build configuration list for PBXNativeTarget "SemanticGallery" */;
+				buildPhases = (
+					A0000000000000000000000D /* Sources */,
+					A0000000000000000000000C /* Frameworks */,
+					A0000000000000000000000E /* Resources */,
+					A0000000000000000000002D /* Bundle Semantic Search Artifacts */,
+				);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SemanticGallery;
+			packageProductDependencies = (
+				A00000000000000000000020 /* SemanticGalleryAppShell */,
+			);
+			productName = SemanticGallery;
+			productReference = A00000000000000000000008 /* SemanticGallery.app */;
+			productType = "com.apple.product-type.application";
+		};
+		A00000000000000000000013 /* SemanticGalleryUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A00000000000000000000016 /* Build configuration list for PBXNativeTarget "SemanticGalleryUITests" */;
+			buildPhases = (
+				A00000000000000000000010 /* Sources */,
+				A0000000000000000000000F /* Frameworks */,
+				A00000000000000000000011 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A0000000000000000000001D /* PBXTargetDependency */,
+			);
+			name = SemanticGalleryUITests;
+			packageProductDependencies = (
+				A00000000000000000000028 /* SemanticGalleryML */,
+				A00000000000000000000029 /* SemanticGalleryPersistence */,
+			);
+			productName = SemanticGalleryUITests;
+			productReference = A00000000000000000000009 /* SemanticGalleryUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A00000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					A00000000000000000000012 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					A00000000000000000000013 = {
+						CreatedOnToolsVersion = 16.0;
+						TestTargetID = A00000000000000000000012;
+					};
+				};
+			};
+			buildConfigurationList = A00000000000000000000014 /* Build configuration list for PBXProject "SemanticGallery" */;
+			compatibilityVersion = "Xcode 16.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+			);
+			mainGroup = A00000000000000000000002;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A0000000000000000000001F /* XCLocalSwiftPackageReference ".." */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = A00000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A00000000000000000000012 /* SemanticGallery */,
+				A00000000000000000000013 /* SemanticGalleryUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		A0000000000000000000002D /* Bundle Semantic Search Artifacts */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Bundle Semantic Search Artifacts";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "set -euo pipefail\nartifact_source_root=\"${SEMANTICGALLERY_BUNDLED_ARTIFACT_SOURCE_ROOT:-$SRCROOT/../.cache}\"\nartifact_destination_root=\"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/SemanticGalleryArtifacts\"\nrequired_paths=(\n  \"mlx/siglip2-base-patch16-224-f32/config.json\"\n  \"mlx/siglip2-base-patch16-224-f32/tokenizer.json\"\n  \"mlx/siglip2-base-patch16-224-f32/tokenizer_config.json\"\n  \"mlx/siglip2-base-patch16-224-f32/special_tokens_map.json\"\n  \"mlx/siglip2-base-patch16-224-f32/preprocessor_config.json\"\n  \"semanticgallery/stage1/weights.safetensors\"\n  \"semanticgallery/stage1/summary.json\"\n  \"semanticgallery/stage2_public_anchor/semanticgallery-stage2-public-anchor.tar.gz\"\n  \"semanticgallery/stage2_public_anchor/sample_info.json\"\n)\nfor relative_path in \"${required_paths[@]}\"; do\n  if [[ ! -s \"$artifact_source_root/$relative_path\" ]]; then\n    echo \"Bundled artifact source is missing $relative_path at $artifact_source_root\" >&2\n    exit 1\n  fi\ndone\nrm -rf \"$artifact_destination_root\"\nmkdir -p \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"\nditto \"$artifact_source_root\" \"$artifact_destination_root\"\n";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A0000000000000000000000E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A0000000000000000000002A /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A00000000000000000000011 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A0000000000000000000000D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A0000000000000000000000A /* SemanticGalleryApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A00000000000000000000010 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A00000000000000000000025 /* ArtifactEncodingTests.swift in Sources */,
+				A0000000000000000000000B /* PhaseAFlowTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A0000000000000000000001D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A00000000000000000000012 /* SemanticGallery */;
+			targetProxy = A0000000000000000000001E /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		A00000000000000000000017 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		A00000000000000000000018 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		A00000000000000000000019 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				CODE_SIGNING_ALLOWED = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = SemanticGallery;
+				INFOPLIST_KEY_CFBundleName = SemanticGallery;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.semanticgallery.app;
+				PRODUCT_NAME = SemanticGallery;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		A0000000000000000000001A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				CODE_SIGNING_ALLOWED = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = SemanticGallery;
+				INFOPLIST_KEY_CFBundleName = SemanticGallery;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.semanticgallery.app;
+				PRODUCT_NAME = SemanticGallery;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		A0000000000000000000001B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				CODE_SIGNING_ALLOWED = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.semanticgallery.app.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TEST_TARGET_NAME = SemanticGallery;
+			};
+			name = Debug;
+		};
+		A0000000000000000000001C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = arm64;
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				CODE_SIGNING_ALLOWED = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.semanticgallery.app.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 6.0;
+				TEST_TARGET_NAME = SemanticGallery;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A00000000000000000000014 /* Build configuration list for PBXProject "SemanticGallery" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000017 /* Debug */,
+				A00000000000000000000018 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A00000000000000000000015 /* Build configuration list for PBXNativeTarget "SemanticGallery" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A00000000000000000000019 /* Debug */,
+				A0000000000000000000001A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		A00000000000000000000016 /* Build configuration list for PBXNativeTarget "SemanticGalleryUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A0000000000000000000001B /* Debug */,
+				A0000000000000000000001C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		A0000000000000000000001F /* XCLocalSwiftPackageReference ".." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ..;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A00000000000000000000020 /* SemanticGalleryAppShell */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A0000000000000000000001F /* XCLocalSwiftPackageReference ".." */;
+			productName = SemanticGalleryAppShell;
+		};
+		A00000000000000000000028 /* SemanticGalleryML */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A0000000000000000000001F /* XCLocalSwiftPackageReference ".." */;
+			productName = SemanticGalleryML;
+		};
+		A00000000000000000000029 /* SemanticGalleryPersistence */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A0000000000000000000001F /* XCLocalSwiftPackageReference ".." */;
+			productName = SemanticGalleryPersistence;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = A00000000000000000000001 /* Project object */;
+}

@@ -156,10 +156,11 @@ struct WorkspacePreviewOverlay: View {
     private var previewMediaView: some View {
         ZStack {
             if let image {
+                let fittedSize = WorkspacePreviewLayout.fittedMediaSize(for: image.size)
                 Image(nsImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .frame(maxWidth: 1180, maxHeight: 760)
+                    .frame(width: fittedSize.width, height: fittedSize.height)
                     .shadow(color: Color.black.opacity(0.28), radius: 26, y: 16)
             } else {
                 ProgressView()
@@ -245,6 +246,35 @@ private enum WorkspacePreviewFormatting {
 
     static func dimensions(width: Int, height: Int) -> String {
         "\(width) × \(height)"
+    }
+}
+
+enum WorkspacePreviewLayout {
+    static let maxMediaSize = CGSize(width: 1180, height: 760)
+
+    static func fittedMediaSize(for imageSize: CGSize) -> CGSize {
+        guard imageSize.width > 0, imageSize.height > 0 else {
+            return maxMediaSize
+        }
+
+        let widthScale = maxMediaSize.width / imageSize.width
+        let heightScale = maxMediaSize.height / imageSize.height
+        let scale = min(widthScale, heightScale)
+
+        return CGSize(
+            width: imageSize.width * scale,
+            height: imageSize.height * scale
+        )
+    }
+
+    static func centeredMediaFrame(containerSize: CGSize, imageSize: CGSize) -> CGRect {
+        let fittedSize = fittedMediaSize(for: imageSize)
+        return CGRect(
+            x: (containerSize.width - fittedSize.width) / 2,
+            y: (containerSize.height - fittedSize.height) / 2,
+            width: fittedSize.width,
+            height: fittedSize.height
+        )
     }
 }
 

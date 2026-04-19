@@ -29,10 +29,10 @@ final class PhaseAFlowTests: XCTestCase {
             useStubDownloads: false,
             artifactSourceRoot: try installedArtifactFixtureRoot().path(percentEncoded: false),
             installStepDelayMilliseconds: 0,
-            folderPreparationDelayMilliseconds: 0
+            folderPreparationDelayMilliseconds: 900
         )
 
-        app.launch()
+        launchConfiguredApplication(app)
 
         XCTAssertFalse(app.buttons["start-installation-button"].exists)
         XCTAssertFalse(app.buttons["choose-folder-button"].exists)
@@ -44,8 +44,8 @@ final class PhaseAFlowTests: XCTestCase {
         XCTAssertTrue(pathBar.waitForExistence(timeout: 5))
         XCTAssertTrue(searchEditor.waitForExistence(timeout: 5))
         XCTAssertTrue(resultLimitPicker.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Choose a folder to begin"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["Open Settings at the far right, then choose your folder"].waitForExistence(timeout: 5))
+        XCTAssertTrue(identifiedElement(in: app, identifier: "workspace-empty-title").waitForExistence(timeout: 5))
+        XCTAssertTrue(identifiedElement(in: app, identifier: "workspace-empty-message").waitForExistence(timeout: 5))
         XCTAssertLessThan(pathBar.frame.height, 50)
         XCTAssertLessThan(abs(pathBar.frame.height - searchEditor.frame.height), 4)
         XCTAssertLessThan(abs(settingsButton.frame.width - settingsButton.frame.height), 3)
@@ -69,19 +69,109 @@ final class PhaseAFlowTests: XCTestCase {
             useStubDownloads: true,
             artifactSourceRoot: nil,
             installStepDelayMilliseconds: 0,
-            folderPreparationDelayMilliseconds: 0
+            folderPreparationDelayMilliseconds: 900
         )
 
-        app.launch()
+        launchConfiguredApplication(app)
 
         XCTAssertTrue(app.buttons["open-settings-button"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["choose-folder-button"].exists)
         XCTAssertTrue(identifiedElement(in: app, identifier: "workspace-path-bar").waitForExistence(timeout: 5))
         clickElement(app.buttons["open-settings-button"], in: app)
-        XCTAssertTrue(app.staticTexts["Idle"].waitForExistence(timeout: 5))
+        XCTAssertTrue(waitForSettingsStatusTitle(in: app, toEqual: "No folder selected", timeout: 5))
         XCTAssertTrue(identifiedElement(in: app, identifier: "settings-library-empty-prompt").waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["Choose a library in Settings to open the archive."].exists)
         saveScreenshot(named: "workspace-empty-direct", in: app, evidenceRoot: evidenceRoot)
+    }
+
+    func testSettingsWindowStaysInteractiveAfterOpeningFromWorkspace() throws {
+        let runtimeRoot = makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: runtimeRoot) }
+
+        try createInstalledRuntime(at: runtimeRoot)
+
+        let suiteName = "SemanticGalleryUITests.\(UUID().uuidString)"
+        defer { UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName) }
+
+        let app = configuredApp(
+            runtimeRoot: runtimeRoot,
+            suiteName: suiteName,
+            useStubDownloads: true,
+            artifactSourceRoot: nil,
+            installStepDelayMilliseconds: 0,
+            folderPreparationDelayMilliseconds: 900
+        )
+
+        launchConfiguredApplication(app)
+
+        XCTAssertTrue(app.buttons["open-settings-button"].waitForExistence(timeout: 5), app.debugDescription)
+        clickElement(app.buttons["open-settings-button"], in: app)
+
+        let chooseFolderButton = app.buttons["settings-choose-folder-button"]
+        XCTAssertTrue(chooseFolderButton.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(waitForSettingsStatusTitle(in: app, toEqual: "No folder selected", timeout: 5), app.debugDescription)
+
+        XCTAssertTrue(
+            waitForCondition(timeout: 7) {
+                chooseFolderButton.exists && chooseFolderButton.isHittable
+            },
+            app.debugDescription
+        )
+    }
+
+    func testWorkspaceWithoutFolderKeepsSearchAndPrimaryControlsInteractive() throws {
+        let runtimeRoot = makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: runtimeRoot) }
+
+        try createInstalledRuntime(at: runtimeRoot)
+
+        let suiteName = "SemanticGalleryUITests.\(UUID().uuidString)"
+        defer { UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName) }
+
+        let app = configuredApp(
+            runtimeRoot: runtimeRoot,
+            suiteName: suiteName,
+            useStubDownloads: true,
+            artifactSourceRoot: nil,
+            installStepDelayMilliseconds: 0,
+            folderPreparationDelayMilliseconds: 900
+        )
+
+        launchConfiguredApplication(app)
+
+        let searchInput = searchInput(in: app)
+        XCTAssertTrue(searchInput.waitForExistence(timeout: 5), app.debugDescription)
+        enterText("still editable", into: searchInput, in: app)
+        XCTAssertTrue(
+            waitForCondition(timeout: 5) {
+                String(describing: self.searchInput(in: app).value ?? "").contains("still editable")
+            },
+            app.debugDescription
+        )
+        submitSearch(using: searchInput, in: app)
+        XCTAssertTrue(app.staticTexts["No Selected Folder"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Open Settings to choose a folder."].waitForExistence(timeout: 5))
+
+        let selectionModeButton = app.buttons["workspace-selection-mode-button"]
+        XCTAssertTrue(selectionModeButton.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(selectionModeButton.isEnabled)
+        clickElement(selectionModeButton, in: app)
+        XCTAssertTrue(app.staticTexts["0 selected"].waitForExistence(timeout: 5), app.debugDescription)
+
+        clickElement(app.buttons["open-settings-button"], in: app)
+        let startPrivateAdaptationButton = app.buttons["start-private-adaptation-button"]
+        XCTAssertTrue(startPrivateAdaptationButton.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(startPrivateAdaptationButton.isEnabled)
+        clickElement(startPrivateAdaptationButton, in: app)
+
+        let adaptationAlert = app.sheets.firstMatch
+        XCTAssertTrue(adaptationAlert.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(adaptationAlert.staticTexts["Private Album Adaptation"].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            adaptationAlert.staticTexts["Choose a folder in Settings before starting private adaptation."].waitForExistence(timeout: 5),
+            adaptationAlert.debugDescription
+        )
+        clickElement(adaptationAlert.buttons["OK"], in: app)
     }
 
     func testSelectingFolderFromSettingsShowsBusyStatusAndReturnsToReady() throws {
@@ -103,7 +193,7 @@ final class PhaseAFlowTests: XCTestCase {
             folderPreparationDelayMilliseconds: 900
         )
 
-        app.launch()
+        launchConfiguredApplication(app)
 
         XCTAssertTrue(app.buttons["open-settings-button"].waitForExistence(timeout: 5))
         clickElement(app.buttons["open-settings-button"], in: app)
@@ -153,7 +243,7 @@ final class PhaseAFlowTests: XCTestCase {
             folderPreparationDelayMilliseconds: 900
         )
 
-        app.launch()
+        launchConfiguredApplication(app)
 
         XCTAssertFalse(app.buttons["choose-folder-button"].exists)
         XCTAssertTrue(app.buttons["open-settings-button"].waitForExistence(timeout: 5))
@@ -178,7 +268,7 @@ final class PhaseAFlowTests: XCTestCase {
         XCTAssertGreaterThan(searchEditor.frame.width, app.windows.firstMatch.frame.width * 0.68)
 
         focusEditableElement(searchInput, in: app)
-        searchInput.typeText("sample-01")
+        enterText("sample-01", into: searchInput, in: app)
         submitSearch(using: searchInput, in: app)
 
         XCTAssertTrue(waitForResultCellCount(in: app, expected: 1, timeout: 5))
@@ -204,7 +294,7 @@ final class PhaseAFlowTests: XCTestCase {
             folderPreparationDelayMilliseconds: 900
         )
 
-        app.launch()
+        launchConfiguredApplication(app)
 
         XCTAssertTrue(app.buttons["open-settings-button"].waitForExistence(timeout: 5))
         clickElement(app.buttons["open-settings-button"], in: app)
@@ -294,7 +384,7 @@ final class PhaseAFlowTests: XCTestCase {
             folderPreparationDelayMilliseconds: 900
         )
 
-        app.launch()
+        launchConfiguredApplication(app)
         XCTAssertTrue(app.buttons["open-settings-button"].waitForExistence(timeout: 5))
         clickElement(app.buttons["open-settings-button"], in: app)
         XCTAssertTrue(app.buttons["settings-choose-folder-button"].waitForExistence(timeout: 5))
@@ -303,8 +393,13 @@ final class PhaseAFlowTests: XCTestCase {
 
         XCTAssertTrue(waitForSettingsBusyState(in: app, title: "Indexing", timeout: 10), app.debugDescription)
         XCTAssertTrue(waitForSettingsReadyState(in: app, timeout: 120), app.debugDescription)
-        closeSettingsWindowIfPresent(in: app)
-        XCTAssertTrue(waitForResultCellCount(in: app, expected: supportedImageCount(in: selectedFolder), timeout: 20))
+        relaunchIntoWorkspace(in: app)
+        XCTAssertTrue(
+            waitForCondition(timeout: 20) {
+                app.buttons.matching(identifier: "workspace-result-cell").count >= 2
+            },
+            app.debugDescription
+        )
 
         let resultCells = app.buttons.matching(identifier: "workspace-result-cell")
         XCTAssertGreaterThanOrEqual(resultCells.count, 2)
@@ -317,11 +412,13 @@ final class PhaseAFlowTests: XCTestCase {
         let previewSimilarButton = app.buttons["workspace-preview-similar-button"]
         let previewInfoButton = app.buttons["workspace-preview-info-button"]
         let previewDeleteButton = app.buttons["workspace-preview-delete-button"]
+        let previewCloseButton = app.buttons["workspace-preview-close-button"]
         let previewNextButton = app.buttons["workspace-preview-next-button"]
         let previewPreviousButton = app.buttons["workspace-preview-previous-button"]
         XCTAssertTrue(previewSimilarButton.waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertTrue(previewInfoButton.waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertTrue(previewDeleteButton.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(previewCloseButton.waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertTrue(previewNextButton.waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertTrue(previewPreviousButton.waitForExistence(timeout: 5), app.debugDescription)
         saveScreenshot(named: "01-preview", in: app, evidenceRoot: evidenceRoot)
@@ -344,7 +441,7 @@ final class PhaseAFlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts[firstFilename].waitForExistence(timeout: 5), app.debugDescription)
         saveScreenshot(named: "02-preview-metadata", in: app, evidenceRoot: evidenceRoot)
 
-        app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
+        clickElement(previewCloseButton, in: app)
         XCTAssertTrue(waitForNonExistence(of: previewOverlay, timeout: 5))
 
         let selectionModeButton = app.buttons["workspace-selection-mode-button"]
@@ -357,9 +454,19 @@ final class PhaseAFlowTests: XCTestCase {
         let selectionToggleButton = app.buttons["workspace-selection-toggle-button"]
         XCTAssertTrue(selectionToggleButton.waitForExistence(timeout: 5), app.debugDescription)
         clickElement(selectionToggleButton, in: app)
-        XCTAssertTrue(app.staticTexts["\(supportedImageCount(in: selectedFolder)) selected"].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            waitForCondition(timeout: 5) {
+                app.staticTexts["\(supportedImageCount(in: selectedFolder)) selected"].exists
+            },
+            app.debugDescription
+        )
         clickElement(selectionToggleButton, in: app)
-        XCTAssertTrue(app.staticTexts["0 selected"].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            waitForCondition(timeout: 5) {
+                app.staticTexts["0 selected"].exists
+            },
+            app.debugDescription
+        )
     }
 
     func testPastingImageRunsSemanticSearchAgainstIndexedEmbeddings() throws {
@@ -383,10 +490,10 @@ final class PhaseAFlowTests: XCTestCase {
             useStubDownloads: true,
             artifactSourceRoot: nil,
             installStepDelayMilliseconds: 0,
-            folderPreparationDelayMilliseconds: 0
+            folderPreparationDelayMilliseconds: 900
         )
 
-        app.launch()
+        launchConfiguredApplication(app)
 
         XCTAssertTrue(app.buttons["open-settings-button"].waitForExistence(timeout: 5))
         clickElement(app.buttons["open-settings-button"], in: app)
@@ -431,10 +538,10 @@ final class PhaseAFlowTests: XCTestCase {
             useStubDownloads: true,
             artifactSourceRoot: nil,
             installStepDelayMilliseconds: 0,
-            folderPreparationDelayMilliseconds: 0
+            folderPreparationDelayMilliseconds: 900
         )
 
-        app.launch()
+        launchConfiguredApplication(app)
 
         XCTAssertTrue(app.buttons["open-settings-button"].waitForExistence(timeout: 5))
         clickElement(app.buttons["open-settings-button"], in: app)
@@ -472,22 +579,28 @@ final class PhaseAFlowTests: XCTestCase {
     func testInstalledDMGAppBundlesArtifactsAndIndexesFromSettings() throws {
         let selectedFolder = try fixtureFolder(named: "AlbumPreparation")
         let evidenceRoot = makeEvidenceDirectory(named: "installed-dmg-real-flow")
+        let distributionAppURL = try mountedDMGAppURL()
+        let runtimeRoot = makeTemporaryDirectory()
+        let suiteName = "SemanticGalleryUITests.InstalledDMG.\(UUID().uuidString)"
+        defer { try? FileManager.default.removeItem(at: runtimeRoot) }
+        defer { UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName) }
 
-        XCTAssertTrue(installedSemanticGalleryAppURL().fileExists)
         terminateInterferingSystemApps()
         XCTAssertTrue(waitForRunningApplicationsToExit(bundleIdentifier: "com.semanticgallery.app", timeout: 10))
 
-        let app = attachedInstalledApp()
-        app.launch()
-        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20), app.debugDescription)
+        let app = launchApplication(
+            at: distributionAppURL,
+            suiteName: suiteName,
+            runtimeRoot: runtimeRoot
+        )
         XCTAssertEqual(
             activeSemanticGalleryBundleURL()?.standardizedFileURL,
-            installedSemanticGalleryAppURL().standardizedFileURL
+            distributionAppURL.standardizedFileURL
         )
 
         XCTAssertFalse(app.buttons["start-installation-button"].exists)
         XCTAssertTrue(app.buttons["open-settings-button"].waitForExistence(timeout: 20), app.debugDescription)
-        assertBundledArtifactsAvailable(at: installedSemanticGalleryAppURL())
+        assertBundledArtifactsAvailable(at: distributionAppURL)
         saveScreenshot(named: "01-installed-workspace-empty", in: app, evidenceRoot: evidenceRoot)
 
         clickElement(app.buttons["open-settings-button"], in: app)
@@ -495,7 +608,7 @@ final class PhaseAFlowTests: XCTestCase {
         clickElement(app.buttons["settings-choose-folder-button"], in: app)
         chooseFolderThroughOpenPanel(in: app, folderURL: selectedFolder)
 
-        XCTAssertTrue(waitForSettingsBusyState(in: app, title: "Indexing", timeout: 10), app.debugDescription)
+        XCTAssertTrue(waitForSettingsPreparationToStartOrFinish(in: app, timeout: 10), app.debugDescription)
         saveScreenshot(named: "02a-installed-after-folder-choice", in: app, evidenceRoot: evidenceRoot)
         XCTAssertTrue(waitForSettingsReadyState(in: app, timeout: 120), app.debugDescription)
         closeSettingsWindowIfPresent(in: app)
@@ -506,6 +619,11 @@ final class PhaseAFlowTests: XCTestCase {
     func testInstalledDMGAppIndexesAndSearchesARealAlbumFolderWithoutTemporaryRuntimeRoots() throws {
         let selectedFolder = try realWorldAlbumFolder()
         let supportedImages = supportedImageURLs(in: selectedFolder)
+        let distributionAppURL = try mountedDMGAppURL()
+        let runtimeRoot = makeTemporaryDirectory()
+        let suiteName = "SemanticGalleryUITests.InstalledDMG.\(UUID().uuidString)"
+        defer { try? FileManager.default.removeItem(at: runtimeRoot) }
+        defer { UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName) }
         guard supportedImages.count >= 2 else {
             XCTFail("The real-world album folder needs at least two supported images.")
             return
@@ -515,19 +633,20 @@ final class PhaseAFlowTests: XCTestCase {
         let imageQueryImage = supportedImages[1]
         let expectedImageCount = supportedImages.count
 
-        try removeInstalledAppArtifacts()
         terminateInterferingSystemApps()
         XCTAssertTrue(waitForRunningApplicationsToExit(bundleIdentifier: "com.semanticgallery.app", timeout: 10))
 
-        let app = attachedInstalledApp()
-        app.launch()
-        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20), app.debugDescription)
+        let app = launchApplication(
+            at: distributionAppURL,
+            suiteName: suiteName,
+            runtimeRoot: runtimeRoot
+        )
         XCTAssertEqual(
             activeSemanticGalleryBundleURL()?.standardizedFileURL,
-            installedSemanticGalleryAppURL().standardizedFileURL
+            distributionAppURL.standardizedFileURL
         )
 
-        assertBundledArtifactsAvailable(at: installedSemanticGalleryAppURL())
+        assertBundledArtifactsAvailable(at: distributionAppURL)
         XCTAssertFalse(app.buttons["start-installation-button"].exists)
         XCTAssertTrue(app.buttons["open-settings-button"].waitForExistence(timeout: 20), app.debugDescription)
         clickElement(app.buttons["open-settings-button"], in: app)
@@ -535,8 +654,8 @@ final class PhaseAFlowTests: XCTestCase {
         clickElement(app.buttons["settings-choose-folder-button"], in: app)
         chooseFolderThroughOpenPanel(in: app, folderURL: selectedFolder)
 
-        let databaseURL = actualAppSupportRoot().appending(path: "library.sqlite")
-        let logURL = actualLogsRoot().appending(path: "semanticgallery.log")
+        let databaseURL = appSupportRoot(in: runtimeRoot).appending(path: "library.sqlite")
+        let logURL = logsRoot(in: runtimeRoot).appending(path: "semanticgallery.log")
 
         XCTAssertTrue(
             waitForCondition(timeout: 180) {
@@ -546,7 +665,7 @@ final class PhaseAFlowTests: XCTestCase {
         )
         XCTAssertTrue(
             waitForCondition(timeout: 180) {
-                (try? self.scalarCount(in: databaseURL, sql: "SELECT COUNT(*) FROM embeddings")) == expectedImageCount
+                (try? self.embeddingCount(in: runtimeRoot, encoderVersion: "stage1")) == expectedImageCount
             },
             "The installed app did not write embeddings for the selected folder. Recent log lines:\n\(recentLogLines(at: logURL))"
         )
@@ -568,10 +687,7 @@ final class PhaseAFlowTests: XCTestCase {
         closeSettingsWindowIfPresent(in: app)
         XCTAssertTrue(waitForResultCellCount(in: app, expected: expectedImageCount, timeout: 180), app.debugDescription)
         XCTAssertEqual(
-            try scalarCount(
-                in: databaseURL,
-                sql: "SELECT COUNT(*) FROM embeddings"
-            ),
+            try embeddingCount(in: runtimeRoot, encoderVersion: "stage1"),
             expectedImageCount
         )
 
@@ -588,7 +704,7 @@ final class PhaseAFlowTests: XCTestCase {
         XCTAssertTrue(searchInput.waitForExistence(timeout: 10), app.debugDescription)
 
         clearText(in: searchInput, in: app)
-        searchInput.typeText(textQueryImage.deletingPathExtension().lastPathComponent)
+        enterText(textQueryImage.deletingPathExtension().lastPathComponent, into: searchInput, in: app)
         submitSearch(using: searchInput, in: app)
         XCTAssertTrue(
             waitForCondition(timeout: 20) {
@@ -610,24 +726,29 @@ final class PhaseAFlowTests: XCTestCase {
 
     func testInstalledDMGAppReturnsToWorkspaceAfterReinstall() throws {
         let evidenceRoot = makeEvidenceDirectory(named: "installed-dmg-reinstall-workspace")
+        let distributionAppURL = try mountedDMGAppURL()
+        let runtimeRoot = makeTemporaryDirectory()
+        let suiteName = "SemanticGalleryUITests.InstalledDMG.\(UUID().uuidString)"
+        defer { try? FileManager.default.removeItem(at: runtimeRoot) }
+        defer { UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName) }
 
-        _ = try mountedDMGAppURL()
-        try installSemanticGalleryAppFromMountedDMG()
         terminateInterferingSystemApps()
         XCTAssertTrue(waitForRunningApplicationsToExit(bundleIdentifier: "com.semanticgallery.app", timeout: 10))
 
-        let app = attachedInstalledApp()
-        app.launch()
-        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20), app.debugDescription)
+        let app = launchApplication(
+            at: distributionAppURL,
+            suiteName: suiteName,
+            runtimeRoot: runtimeRoot
+        )
         XCTAssertEqual(
             activeSemanticGalleryBundleURL()?.standardizedFileURL,
-            installedSemanticGalleryAppURL().standardizedFileURL
+            distributionAppURL.standardizedFileURL
         )
 
         XCTAssertFalse(app.buttons["start-installation-button"].exists)
         XCTAssertTrue(app.buttons["open-settings-button"].waitForExistence(timeout: 20), app.debugDescription)
-        XCTAssertTrue(app.staticTexts["Choose a folder to begin"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["Open Settings at the far right, then choose your folder"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["No Selected Folder"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["Open Settings to choose a folder."].waitForExistence(timeout: 10))
         saveScreenshot(named: "01-installed-relaunch-workspace", in: app, evidenceRoot: evidenceRoot)
         app.terminate()
     }
@@ -649,10 +770,10 @@ final class PhaseAFlowTests: XCTestCase {
             useStubDownloads: true,
             artifactSourceRoot: nil,
             installStepDelayMilliseconds: 0,
-            folderPreparationDelayMilliseconds: 0
+            folderPreparationDelayMilliseconds: 900
         )
 
-        app.launch()
+        launchConfiguredApplication(app)
         XCTAssertTrue(app.buttons["open-settings-button"].waitForExistence(timeout: 5))
         clickElement(app.buttons["open-settings-button"], in: app)
         XCTAssertTrue(app.buttons["settings-choose-folder-button"].waitForExistence(timeout: 5))
@@ -694,10 +815,10 @@ final class PhaseAFlowTests: XCTestCase {
             useStubDownloads: true,
             artifactSourceRoot: nil,
             installStepDelayMilliseconds: 0,
-            folderPreparationDelayMilliseconds: 0
+            folderPreparationDelayMilliseconds: 900
         )
 
-        app.launch()
+        launchConfiguredApplication(app)
         XCTAssertTrue(app.buttons["open-settings-button"].waitForExistence(timeout: 5))
         clickElement(app.buttons["open-settings-button"], in: app)
         XCTAssertTrue(app.buttons["settings-choose-folder-button"].waitForExistence(timeout: 5))
@@ -755,7 +876,7 @@ final class PhaseAFlowTests: XCTestCase {
         XCTAssertTrue(searchInput.waitForExistence(timeout: 10))
 
         focusEditableElement(searchInput, in: app)
-        searchInput.typeText("private-001")
+        enterText("private-001", into: searchInput, in: app)
         submitSearch(using: searchInput, in: app)
         XCTAssertTrue(waitForResultCellCount(in: app, expected: 1, timeout: 20))
 
@@ -790,10 +911,10 @@ final class PhaseAFlowTests: XCTestCase {
             useStubDownloads: true,
             artifactSourceRoot: nil,
             installStepDelayMilliseconds: 0,
-            folderPreparationDelayMilliseconds: 0
+            folderPreparationDelayMilliseconds: 900
         )
 
-        app.launch()
+        launchConfiguredApplication(app)
         XCTAssertTrue(app.buttons["open-settings-button"].waitForExistence(timeout: 5))
         clickElement(app.buttons["open-settings-button"], in: app)
         XCTAssertTrue(app.buttons["settings-choose-folder-button"].waitForExistence(timeout: 5))
@@ -835,7 +956,7 @@ final class PhaseAFlowTests: XCTestCase {
         XCTAssertTrue(searchInput.waitForExistence(timeout: 10))
         let textSearchStart = Date()
         focusEditableElement(searchInput, in: app)
-        searchInput.typeText(textQuery)
+        enterText(textQuery, into: searchInput, in: app)
         submitSearch(using: searchInput, in: app)
         XCTAssertTrue(
             waitForCondition(timeout: 20) {
@@ -934,6 +1055,7 @@ final class PhaseAFlowTests: XCTestCase {
             "SEMANTICGALLERY_INSTALL_STEP_DELAY_MS": "\(installStepDelayMilliseconds)",
             "SEMANTICGALLERY_FOLDER_STEP_DELAY_MS": "\(folderPreparationDelayMilliseconds)",
             "SEMANTICGALLERY_UI_TEST_FIXTURE_ROOT": fixtureRoot().path,
+            "ApplePersistenceIgnoreState": "YES",
         ]
         if deferSelfUninstallTermination {
             app.launchEnvironment["SEMANTICGALLERY_DEFER_SELF_UNINSTALL_TERMINATION"] = "1"
@@ -944,20 +1066,59 @@ final class PhaseAFlowTests: XCTestCase {
         return app
     }
 
-    private func configuredInstalledApp(runtimeRoot: URL, suiteName: String) -> XCUIApplication {
-        let app = XCUIApplication(url: installedSemanticGalleryAppURL())
-        app.launchArguments.append("--semanticgallery-runtime-overrides")
-        app.launchEnvironment = [
-            "SEMANTICGALLERY_ENABLE_RUNTIME_OVERRIDES": "1",
-            "SEMANTICGALLERY_APP_ROOT": runtimeRoot.path,
-            "SEMANTICGALLERY_DEFAULTS_SUITE": suiteName,
-            "SEMANTICGALLERY_UI_TEST_FIXTURE_ROOT": fixtureRoot().path,
-        ]
-        return app
+    private func attachedInstalledApp() -> XCUIApplication {
+        XCUIApplication()
     }
 
-    private func attachedInstalledApp() -> XCUIApplication {
-        let app = XCUIApplication(url: installedSemanticGalleryAppURL())
+    private func launchConfiguredApplication(_ app: XCUIApplication) {
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20))
+
+        activateSemanticGalleryIfNeeded()
+        if waitForApplicationSurface(in: app, timeout: 5) == false {
+            requestWorkspaceWindow(in: app)
+        }
+
+        XCTAssertTrue(waitForApplicationSurface(in: app, timeout: 15), app.debugDescription)
+    }
+
+    private func launchApplication(
+        at appURL: URL,
+        suiteName: String,
+        runtimeRoot: URL? = nil
+    ) -> XCUIApplication {
+        let app = attachedInstalledApp()
+        app.launchArguments += [
+            "--semanticgallery-runtime-overrides",
+            "-ApplePersistenceIgnoreState", "YES",
+            "-NSQuitAlwaysKeepsWindows", "NO",
+        ]
+        app.launchEnvironment["SEMANTICGALLERY_ENABLE_RUNTIME_OVERRIDES"] = "1"
+        app.launchEnvironment["SEMANTICGALLERY_DEFAULTS_SUITE"] = suiteName
+        if let runtimeRoot {
+            app.launchEnvironment["SEMANTICGALLERY_APP_ROOT"] = runtimeRoot.path(percentEncoded: false)
+            app.launchEnvironment["SEMANTICGALLERY_BUNDLED_ARTIFACTS_ROOT"] =
+                appURL
+                .appending(path: "Contents")
+                .appending(path: "Resources")
+                .appending(path: "SemanticGalleryArtifacts")
+                .path(percentEncoded: false)
+        }
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20), app.debugDescription)
+        XCTAssertEqual(
+            activeSemanticGalleryBundleURL()?.standardizedFileURL,
+            appURL.standardizedFileURL
+        )
+
+        activateSemanticGalleryIfNeeded()
+
+        if waitForApplicationSurface(in: app, timeout: 5) == false {
+            requestWorkspaceWindow(in: app)
+        }
+
+        XCTAssertTrue(waitForApplicationSurface(in: app, timeout: 15), app.debugDescription)
+        XCTAssertTrue(waitForWindowCount(in: app, expected: 1, timeout: 10), app.debugDescription)
         return app
     }
 
@@ -1029,6 +1190,25 @@ final class PhaseAFlowTests: XCTestCase {
         }
     }
 
+    private func waitForSettingsPreparationToStartOrFinish(in app: XCUIApplication, timeout: TimeInterval) -> Bool {
+        waitForCondition(timeout: timeout) {
+            let title = self.displayedText(of: self.identifiedElement(in: app, identifier: "settings-status-title"))
+            let isBusy = title == "Indexing"
+                && self.identifiedElement(in: app, identifier: "settings-status-activity").exists
+                && self.currentSettingsProgressPercentage(in: app) != nil
+            let isReady = {
+                guard let title else {
+                    return false
+                }
+                return title.isEmpty == false
+                    && title != "Indexing"
+                    && title != "Adapting"
+                    && self.identifiedElement(in: app, identifier: "settings-status-activity").exists == false
+            }()
+            return isBusy || isReady
+        }
+    }
+
     private func currentSettingsProgressPercentage(in app: XCUIApplication) -> Int? {
         let progressLabel = identifiedElement(in: app, identifier: "settings-status-progress")
         guard progressLabel.exists, let text = displayedText(of: progressLabel) else {
@@ -1045,12 +1225,14 @@ final class PhaseAFlowTests: XCTestCase {
             return
         }
 
-        if let folderItem = waitForFolderItem(named: folderURL.lastPathComponent, in: openPanel.panel, timeout: 2) {
+        let navigatedDirectly = navigateOpenPanel(to: folderURL, in: openPanel, app: app)
+        if navigatedDirectly == false {
+            guard let folderItem = waitForFolderItem(named: folderURL.lastPathComponent, in: openPanel.panel, timeout: 2) else {
+                XCTFail("The requested folder did not appear in the chooser.\n\(openPanel.panel.debugDescription)")
+                return
+            }
             clickElement(folderItem)
             RunLoop.current.run(until: Date().addingTimeInterval(0.2))
-        } else if navigateOpenPanel(to: folderURL, in: openPanel, app: app) == false {
-            XCTFail("The requested folder did not appear in the chooser.\n\(openPanel.panel.debugDescription)")
-            return
         }
 
         guard let chooseButton = waitForChooseButton(in: openPanel.panel, ownerApp: openPanel.ownerApp, timeout: 5) else {
@@ -1172,39 +1354,64 @@ final class PhaseAFlowTests: XCTestCase {
     }
 
     private func closeSettingsWindowIfPresent(in app: XCUIApplication) {
-        let settingsWindow = app.windows.matching(
-            NSPredicate(format: "identifier == %@ OR title CONTAINS %@", "com_apple_SwiftUI_Settings_window", "Settings")
-        ).firstMatch
-        guard settingsWindow.exists else {
+        let settingsWindowPredicate = NSPredicate(
+            format: "identifier == %@ OR title CONTAINS %@",
+            "com_apple_SwiftUI_Settings_window",
+            "Settings"
+        )
+        let settingsWindows = app.windows.matching(settingsWindowPredicate)
+        guard settingsWindows.count > 0 else {
+            if waitForApplicationSurface(in: app, timeout: 1) == false {
+                requestWorkspaceWindow(in: app)
+            }
             return
         }
 
-        app.activate()
-
-        let closeButton = settingsWindow.buttons["_XCUI:CloseWindow"]
-        if closeButton.waitForExistence(timeout: 2) {
-            clickElement(closeButton, in: app)
-        }
-        if settingsWindow.exists {
-            settingsWindow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)).click()
-            app.typeKey("w", modifierFlags: .command)
-        }
-        _ = waitForNonExistence(of: settingsWindow, timeout: 5)
+        relaunchIntoWorkspace(in: app)
     }
 
     private func focusEditableElement(_ element: XCUIElement, in app: XCUIApplication) {
         dismissSystemBannersIfNeeded()
         app.activate()
-        element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        let focusTarget: XCUIElement
+        if element.identifier == "workspace-search-editor" || element.identifier == "workspace-search-text-field" {
+            let searchLabel = app.staticTexts["workspace-search-text-field"]
+            focusTarget = searchLabel.exists ? searchLabel : element
+        } else {
+            focusTarget = element
+        }
+
+        focusTarget.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
         RunLoop.current.run(until: Date().addingTimeInterval(0.2))
     }
 
     private func submitSearch(using element: XCUIElement, in app: XCUIApplication) {
         focusEditableElement(element, in: app)
-        element.typeText("\r")
+        app.typeText("\r")
+    }
+
+    private func enterText(_ text: String, into element: XCUIElement, in app: XCUIApplication) {
+        focusEditableElement(element, in: app)
+        app.typeText(text)
     }
 
     private func searchInput(in app: XCUIApplication) -> XCUIElement {
+        let editor = identifiedElement(in: app, identifier: "workspace-search-editor")
+        let editorTextView = editor.descendants(matching: .textView)["workspace-search-text-field"]
+        if editorTextView.exists {
+            return editorTextView
+        }
+
+        let editorSearchField = editor.descendants(matching: .searchField)["workspace-search-text-field"]
+        if editorSearchField.exists {
+            return editorSearchField
+        }
+
+        let nestedEditorTextField = editor.descendants(matching: .textField)["workspace-search-text-field"]
+        if nestedEditorTextField.exists {
+            return nestedEditorTextField
+        }
+
         let textView = app.textViews["workspace-search-text-field"]
         if textView.exists {
             return textView
@@ -1220,9 +1427,9 @@ final class PhaseAFlowTests: XCTestCase {
             return textField
         }
 
-        let editorTextField = app.textFields["workspace-search-editor"]
-        if editorTextField.exists {
-            return editorTextField
+        let editorField = app.textFields["workspace-search-editor"]
+        if editorField.exists {
+            return editorField
         }
 
         return identifiedElement(in: app, identifier: "workspace-search-editor")
@@ -1272,12 +1479,74 @@ final class PhaseAFlowTests: XCTestCase {
         }
     }
 
+    private func waitForApplicationSurface(in app: XCUIApplication, timeout: TimeInterval) -> Bool {
+        waitForCondition(timeout: timeout) {
+            app.windows.firstMatch.exists
+                || app.buttons["open-settings-button"].exists
+                || app.buttons["choose-folder-button"].exists
+                || app.buttons["start-installation-button"].exists
+        }
+    }
+
+    private func waitForWindowCount(in app: XCUIApplication, expected: Int, timeout: TimeInterval) -> Bool {
+        waitForCondition(timeout: timeout) {
+            app.windows.count == expected
+        }
+    }
+
     private func activateSemanticGalleryIfNeeded() {
         NSRunningApplication
             .runningApplications(withBundleIdentifier: "com.semanticgallery.app")
             .first(where: { $0.isTerminated == false })?
-            .activate(options: [.activateIgnoringOtherApps])
+            .activate(options: [.activateAllWindows])
+        var scriptError: NSDictionary?
+        _ = NSAppleScript(source: "tell application id \"com.semanticgallery.app\" to activate")?
+            .executeAndReturnError(&scriptError)
         RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+    }
+
+    private func requestWorkspaceWindow(in app: XCUIApplication) {
+        activateSemanticGalleryIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+
+        let fileMenuItem = app.menuBars.menuBarItems["File"]
+        if fileMenuItem.waitForExistence(timeout: 2) {
+            fileMenuItem.click()
+            let newWindowItem = app.menuItems["New Window"]
+            if newWindowItem.waitForExistence(timeout: 2) {
+                newWindowItem.click()
+                RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+                return
+            }
+        }
+
+        var scriptError: NSDictionary?
+        let script = """
+        tell application id "com.semanticgallery.app" to activate
+        tell application "System Events"
+            tell process "SemanticGallery"
+                keystroke "n" using command down
+            end tell
+        end tell
+        """
+        _ = NSAppleScript(source: script)?.executeAndReturnError(&scriptError)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+    }
+
+    private func relaunchIntoWorkspace(in app: XCUIApplication) {
+        if app.state != .notRunning {
+            app.terminate()
+        }
+
+        XCTAssertTrue(waitForRunningApplicationsToExit(bundleIdentifier: "com.semanticgallery.app", timeout: 10))
+        app.launch()
+        XCTAssertTrue(app.wait(for: .runningForeground, timeout: 20), app.debugDescription)
+
+        activateSemanticGalleryIfNeeded()
+        if waitForApplicationSurface(in: app, timeout: 5) == false {
+            requestWorkspaceWindow(in: app)
+        }
+        XCTAssertTrue(waitForApplicationSurface(in: app, timeout: 15), app.debugDescription)
     }
 
     private func clickElement(_ element: XCUIElement, in app: XCUIApplication? = nil) {
@@ -1334,715 +1603,6 @@ final class PhaseAFlowTests: XCTestCase {
         return normalized
     }
 
-    private struct OpenPanelContext {
-        let ownerApp: XCUIApplication
-        let panel: XCUIElement
-    }
-
-    private struct SemanticSearchFixture {
-        let folderURL: URL
-        let expectedTopResults: [String]
-    }
-
-    private func identifiedElement(in app: XCUIApplication, identifier: String) -> XCUIElement {
-        app.descendants(matching: .any)[identifier]
-    }
-
-    private func makeTemporaryDirectory() -> URL {
-        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory
-    }
-
-    private func fixtureFolder(named name: String) throws -> URL {
-        let url = fixtureRoot().appending(path: "SemanticGalleryUITest\(name)")
-        guard url.fileExists else {
-            throw NSError(
-                domain: "SemanticGalleryUITests",
-                code: 2,
-                userInfo: [NSLocalizedDescriptionKey: "UI test fixture folder does not exist: \(url.path)"]
-            )
-        }
-        return url
-    }
-
-    private func semanticYellowCatFixture() throws -> SemanticSearchFixture {
-        let folderURL = fixtureRoot().appending(path: "SemanticGalleryUITestSemanticYellowCat")
-        let expectedTopResults = ["study-01.jpg", "study-02.jpg", "study-03.jpg"]
-        let expectedFiles: Set<String> = [
-            "study-01.jpg",
-            "study-02.jpg",
-            "study-03.jpg",
-            "study-04.jpg",
-            "study-05.jpg",
-            "study-06.jpg",
-            "study-07.jpg",
-        ]
-        let existingFiles = try? FileManager.default.contentsOfDirectory(atPath: folderURL.path)
-        guard Set(existingFiles ?? []) == expectedFiles else {
-            throw NSError(
-                domain: "SemanticGalleryUITests",
-                code: 9,
-                userInfo: [NSLocalizedDescriptionKey: "The semantic search fixture is missing from \(folderURL.path)."]
-            )
-        }
-        return SemanticSearchFixture(folderURL: folderURL, expectedTopResults: expectedTopResults)
-    }
-
-    private func fixtureRoot() -> URL {
-        ProcessInfo.processInfo.environment["SEMANTICGALLERY_UI_TEST_FIXTURE_ROOT"]
-            .map { URL(filePath: $0, directoryHint: .isDirectory) }
-            ?? URL(filePath: "/tmp/semanticgallery-ui-fixtures", directoryHint: .isDirectory)
-    }
-
-    private func installedArtifactFixtureRoot() throws -> URL {
-        let candidates = [
-            ProcessInfo.processInfo.environment["SEMANTICGALLERY_UI_TEST_ARTIFACT_FIXTURE_ROOT"],
-            "/tmp/semanticgallery-ui-artifacts",
-            "/Users/\(NSUserName())/.semanticgallery-ui-artifacts",
-        ]
-            .compactMap { $0?.isEmpty == false ? $0 : nil }
-            .map { URL(filePath: $0, directoryHint: .isDirectory) }
-
-        guard let url = candidates.first(where: \.fileExists) else {
-            throw NSError(
-                domain: "SemanticGalleryUITests",
-                code: 4,
-                userInfo: [NSLocalizedDescriptionKey: "UI test artifact fixture root does not exist."]
-            )
-        }
-        return url
-    }
-
-    private func copyTree(from sourceRoot: URL, to destinationRoot: URL) throws {
-        try FileManager.default.copyItem(at: sourceRoot, to: destinationRoot)
-    }
-
-    private func embeddingCount(in runtimeRoot: URL) throws -> Int {
-        try scalarCount(
-            in: appSupportRoot(in: runtimeRoot).appending(path: "library.sqlite"),
-            sql: "SELECT COUNT(*) FROM embeddings"
-        )
-    }
-
-    private func totalVisibleFileCount(in runtimeRoot: URL) throws -> Int {
-        try scalarCount(
-            in: appSupportRoot(in: runtimeRoot).appending(path: "library.sqlite"),
-            sql: "SELECT COUNT(*) FROM file_instances WHERE is_present = 1"
-        )
-    }
-
-    private func totalFileInstanceCount(in runtimeRoot: URL) throws -> Int {
-        try scalarCount(
-            in: appSupportRoot(in: runtimeRoot).appending(path: "library.sqlite"),
-            sql: "SELECT COUNT(*) FROM file_instances"
-        )
-    }
-
-    private func scalarCount(in databaseURL: URL, sql: String, textBindings: [String] = []) throws -> Int {
-        var handle: OpaquePointer?
-        guard sqlite3_open(databaseURL.path, &handle) == SQLITE_OK, let handle else {
-            sqlite3_close(handle)
-            throw NSError(
-                domain: "SemanticGalleryUITests",
-                code: 5,
-                userInfo: [NSLocalizedDescriptionKey: "Could not open the UI test database."]
-            )
-        }
-        defer { sqlite3_close(handle) }
-
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK,
-              let statement else {
-            sqlite3_finalize(statement)
-            throw NSError(
-                domain: "SemanticGalleryUITests",
-                code: 6,
-                userInfo: [NSLocalizedDescriptionKey: "Could not prepare the SQL query."]
-            )
-        }
-        defer { sqlite3_finalize(statement) }
-
-        for (index, value) in textBindings.enumerated() {
-            let bindingResult = value.withCString { pointer in
-                sqlite3_bind_text(statement, Int32(index + 1), pointer, -1, SQLITE_TRANSIENT)
-            }
-            guard bindingResult == SQLITE_OK else {
-                throw NSError(
-                    domain: "SemanticGalleryUITests",
-                    code: 8,
-                    userInfo: [NSLocalizedDescriptionKey: "Could not bind SQL parameters."]
-                )
-            }
-        }
-
-        guard sqlite3_step(statement) == SQLITE_ROW else {
-            throw NSError(
-                domain: "SemanticGalleryUITests",
-                code: 7,
-                userInfo: [NSLocalizedDescriptionKey: "Could not read embedding row count."]
-            )
-        }
-        return Int(sqlite3_column_int(statement, 0))
-    }
-
-    private func supportedImageCount(in folderURL: URL) -> Int {
-        supportedImageURLs(in: folderURL).count
-    }
-
-    private func supportedImageURLs(in folderURL: URL) -> [URL] {
-        let allowedExtensions = Set(["jpg", "jpeg", "png", "heic", "heif"])
-        guard let enumerator = FileManager.default.enumerator(at: folderURL, includingPropertiesForKeys: [.isRegularFileKey]) else {
-            return []
-        }
-        return enumerator.compactMap { item in
-            guard let fileURL = item as? URL,
-                  allowedExtensions.contains(fileURL.pathExtension.lowercased()) else {
-                return nil
-            }
-            return fileURL
-        }
-        .sorted { $0.path < $1.path }
-    }
-
-    private func appSupportRoot(in runtimeRoot: URL) -> URL {
-        runtimeRoot.appending(path: "SemanticGallery")
-    }
-
-    private func actualAppSupportRoot() -> URL {
-        userHomeRoot().appending(path: "Library/Application Support/SemanticGallery")
-    }
-
-    private func cachesRoot(in runtimeRoot: URL) -> URL {
-        runtimeRoot.appending(path: "Caches/com.semanticgallery.app")
-    }
-
-    private func actualCachesRoot() -> URL {
-        actualAppSupportRoot().appending(path: "Caches")
-    }
-
-    private func logsRoot(in runtimeRoot: URL) -> URL {
-        runtimeRoot.appending(path: "Logs/SemanticGallery")
-    }
-
-    private func actualLogsRoot() -> URL {
-        actualAppSupportRoot().appending(path: "Logs")
-    }
-
-    private func realWorldAlbumFolder() throws -> URL {
-        let configuredPath = ProcessInfo.processInfo.environment["SEMANTICGALLERY_UI_REAL_FOLDER"]
-        let fallbackPath = userHomeRoot().appending(path: "Pictures/SemanticGalleryXCUIAlbum").path(percentEncoded: false)
-        let folderURL = URL(
-            filePath: configuredPath?.isEmpty == false ? configuredPath! : fallbackPath,
-            directoryHint: .isDirectory
-        )
-        guard folderURL.fileExists else {
-            throw NSError(
-                domain: "SemanticGalleryUITests",
-                code: 12,
-                userInfo: [NSLocalizedDescriptionKey: "The configured real album folder does not exist."]
-            )
-        }
-        return folderURL
-    }
-
-    private func installStateFile(in runtimeRoot: URL) -> URL {
-        appSupportRoot(in: runtimeRoot).appending(path: "install-state.json")
-    }
-
-    private func actualInstallStateFile() -> URL {
-        actualAppSupportRoot().appending(path: "install-state.json")
-    }
-
-    private func actualPreferencesFile() -> URL {
-        userHomeRoot().appending(path: "Library/Preferences/com.semanticgallery.app.plist")
-    }
-
-    private func actualSavedStateRoot() -> URL {
-        userHomeRoot().appending(path: "Library/Saved Application State/com.semanticgallery.app.savedState")
-    }
-
-    private func actualContainersRoot() -> URL {
-        userHomeRoot().appending(path: "Library/Containers/com.semanticgallery.app")
-    }
-
-    private func actualApplicationScriptsRoot() -> URL {
-        userHomeRoot().appending(path: "Library/Application Scripts/com.semanticgallery.app")
-    }
-
-    private func actualByHostPreferenceFiles() -> [URL] {
-        let byHostRoot = userHomeRoot().appending(path: "Library/Preferences/ByHost")
-        guard byHostRoot.fileExists,
-              let children = try? FileManager.default.contentsOfDirectory(
-                at: byHostRoot,
-                includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles]
-              ) else {
-            return []
-        }
-        return children.filter { $0.lastPathComponent.hasPrefix("com.semanticgallery.app.") }
-    }
-
-    private func userHomeRoot() -> URL {
-        let directPath = "/Users/\(NSUserName())"
-        let directURL = URL(filePath: directPath, directoryHint: .isDirectory)
-        if directURL.fileExists {
-            return directURL
-        }
-        return URL(filePath: NSHomeDirectory(), directoryHint: .isDirectory)
-    }
-
-    private func installedSemanticGalleryAppURL() -> URL {
-        URL(filePath: "/Applications/SemanticGallery.app", directoryHint: .isDirectory)
-    }
-
-    private func assertBundledArtifactsAvailable(
-        at appURL: URL,
-        file: StaticString = #filePath,
-        line: UInt = #line
-    ) {
-        let bundledArtifactsRoot = appURL
-            .appending(path: "Contents")
-            .appending(path: "Resources")
-            .appending(path: "SemanticGalleryArtifacts")
-        XCTAssertTrue(
-            bundledArtifactsRoot.fileExists,
-            "Bundled semantic search artifacts are missing from \(appURL.path).",
-            file: file,
-            line: line
-        )
-        XCTAssertTrue(
-            bundledArtifactsRoot.appending(path: "mlx/siglip2-base-patch16-224-f32/config.json").fileExists,
-            "The bundled app is missing the base model config.",
-            file: file,
-            line: line
-        )
-        XCTAssertTrue(
-            bundledArtifactsRoot.appending(path: "semanticgallery/stage1/weights.safetensors").fileExists,
-            "The bundled app is missing the published stage1 weights.",
-            file: file,
-            line: line
-        )
-        XCTAssertTrue(
-            bundledArtifactsRoot.appending(path: "semanticgallery/stage2_public_anchor/sample_info.json").fileExists,
-            "The bundled app is missing the public anchor metadata.",
-            file: file,
-            line: line
-        )
-    }
-
-    private func recentLogLines(at url: URL, count: Int = 20) -> String {
-        guard let text = try? String(contentsOf: url, encoding: .utf8) else {
-            return "The runtime log file is not available at \(url.path)."
-        }
-        return text
-            .split(separator: "\n", omittingEmptySubsequences: false)
-            .suffix(count)
-            .joined(separator: "\n")
-    }
-
-    private func mountedDMGAppURL() throws -> URL {
-        let volumeRoot = URL(filePath: "/Volumes", directoryHint: .isDirectory)
-        let candidates = (try FileManager.default.contentsOfDirectory(
-            at: volumeRoot,
-            includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
-            options: [.skipsHiddenFiles]
-        ))
-            .filter { $0.lastPathComponent.hasPrefix("SemanticGallery") }
-            .map { $0.appending(path: "SemanticGallery.app") }
-            .filter(\.fileExists)
-            .sorted {
-                let leftDate = (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                let rightDate = (try? $1.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
-                if leftDate == rightDate {
-                    return $0.path < $1.path
-                }
-                return leftDate > rightDate
-            }
-
-        guard let url = candidates.first else {
-            throw NSError(
-                domain: "SemanticGalleryUITests",
-                code: 11,
-                userInfo: [NSLocalizedDescriptionKey: "No mounted SemanticGallery dmg volume is available."]
-            )
-        }
-        return url
-    }
-
-    private func installSemanticGalleryAppFromMountedDMG() throws {
-        let destinationURL = installedSemanticGalleryAppURL()
-        if destinationURL.fileExists {
-            try FileManager.default.removeItem(at: destinationURL)
-        }
-        try FileManager.default.copyItem(at: mountedDMGAppURL(), to: destinationURL)
-    }
-
-    private func removeInstalledAppArtifacts() throws {
-        for url in [
-            actualAppSupportRoot(),
-            actualCachesRoot(),
-            actualLogsRoot(),
-            userHomeRoot().appending(path: "Library/Preferences/com.semanticgallery.app.plist"),
-        ] where url.fileExists {
-            try removeItemIfPossible(at: url)
-        }
-
-        UserDefaults.standard.removePersistentDomain(forName: "com.semanticgallery.app")
-
-        for url in [
-            userHomeRoot().appending(path: "Library/Saved Application State/com.semanticgallery.app.savedState"),
-            userHomeRoot().appending(path: "Library/Containers/com.semanticgallery.app"),
-            userHomeRoot().appending(path: "Library/Application Scripts/com.semanticgallery.app"),
-        ] where url.fileExists {
-            try removeItemIfPossible(at: url)
-        }
-
-        for url in actualByHostPreferenceFiles() {
-            try removeItemIfPossible(at: url)
-        }
-
-        let runnerDataRoot = userHomeRoot()
-            .appending(path: "Library/Containers/com.semanticgallery.app.uitests.xctrunner/Data")
-
-        let runnerLibraryRoot = runnerDataRoot.appending(path: "Library")
-        for url in [
-            runnerLibraryRoot.appending(path: "Application Support/SemanticGallery"),
-            runnerLibraryRoot.appending(path: "Caches/com.semanticgallery.app"),
-            runnerLibraryRoot.appending(path: "Logs/SemanticGallery"),
-            runnerLibraryRoot.appending(path: "Preferences/com.semanticgallery.app.plist"),
-        ] where url.fileExists {
-            try removeItemIfPossible(at: url)
-        }
-
-        let runnerTmpRoot = runnerDataRoot.appending(path: "tmp")
-        if runnerTmpRoot.fileExists {
-            let children = try FileManager.default.contentsOfDirectory(
-                at: runnerTmpRoot,
-                includingPropertiesForKeys: [.isDirectoryKey],
-                options: [.skipsHiddenFiles]
-            )
-            for child in children {
-                let ownedRoots = [
-                    child.appending(path: "SemanticGallery"),
-                    child.appending(path: "Caches/com.semanticgallery.app"),
-                    child.appending(path: "Logs/SemanticGallery"),
-                ]
-                for url in ownedRoots where url.fileExists {
-                    try removeItemIfPossible(at: url)
-                }
-            }
-        }
-
-        let userTempRoot = FileManager.default.temporaryDirectory
-        if userTempRoot.fileExists {
-            let children = try FileManager.default.contentsOfDirectory(
-                at: userTempRoot,
-                includingPropertiesForKeys: [.isDirectoryKey],
-                options: [.skipsHiddenFiles]
-            )
-            for child in children {
-                let ownedRoots = [
-                    child.appending(path: "SemanticGallery"),
-                    child.appending(path: "Caches/com.semanticgallery.app"),
-                    child.appending(path: "Logs/SemanticGallery"),
-                ]
-                for url in ownedRoots where url.fileExists {
-                    try removeItemIfPossible(at: url)
-                }
-            }
-        }
-    }
-
-    private func removeItemIfPossible(at url: URL) throws {
-        do {
-            try FileManager.default.removeItem(at: url)
-        } catch let error as CocoaError where error.code == .fileWriteNoPermission {
-            return
-        }
-    }
-
-    private func artifactFile(in runtimeRoot: URL, relativePath: String) -> URL {
-        appSupportRoot(in: runtimeRoot).appending(path: "Artifacts").appending(path: relativePath)
-    }
-
-    private func fileSize(at url: URL) throws -> Int64 {
-        let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
-        return (attributes[.size] as? NSNumber)?.int64Value ?? 0
-    }
-
-    private func waitForResultCellCount(in app: XCUIApplication, expected: Int, timeout: TimeInterval) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        repeat {
-            if app.buttons.matching(identifier: "workspace-result-cell").count == expected {
-                return true
-            }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
-        } while Date() < deadline
-
-        return false
-    }
-
-    private func waitForCondition(timeout: TimeInterval, predicate: () -> Bool) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        repeat {
-            if predicate() {
-                return true
-            }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
-        } while Date() < deadline
-
-        return false
-    }
-
-    private func waitForHierarchyMarkers(
-        in app: XCUIApplication,
-        markers: [String],
-        timeout: TimeInterval
-    ) -> Bool {
-        waitForCondition(timeout: timeout) {
-            let hierarchy = app.debugDescription
-            return markers.allSatisfy(hierarchy.contains)
-        }
-    }
-
-    private func firstVisibleResultLabel(in app: XCUIApplication) -> String? {
-        let cells = app.buttons.matching(identifier: "workspace-result-cell")
-        guard cells.count > 0 else {
-            return nil
-        }
-        return cells.element(boundBy: 0).label
-    }
-
-    private func visibleResultLabels(in app: XCUIApplication) -> [String] {
-        let cells = app.buttons.matching(identifier: "workspace-result-cell")
-        return (0..<cells.count).map { cells.element(boundBy: $0).label }
-    }
-
-    private func hittableResultLabels(in app: XCUIApplication) -> [String] {
-        let cells = app.buttons.matching(identifier: "workspace-result-cell")
-        return (0..<cells.count).compactMap { index in
-            let cell = cells.element(boundBy: index)
-            return cell.isHittable ? cell.label : nil
-        }
-    }
-
-    private func pasteImage(fileURL: URL, into element: XCUIElement, in app: XCUIApplication) {
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        XCTAssertTrue(pasteboard.writeObjects([fileURL as NSURL]))
-        focusEditableElement(element, in: app)
-        app.typeKey("v", modifierFlags: .command)
-    }
-
-    private func pasteImage(data: Data, filename: String, into element: XCUIElement, in app: XCUIApplication) {
-        let temporaryURL = FileManager.default.temporaryDirectory.appending(path: "\(UUID().uuidString)-\(filename)")
-        do {
-            try data.write(to: temporaryURL)
-            pasteImage(fileURL: temporaryURL, into: element, in: app)
-        } catch {
-            XCTFail("Could not prepare image pasteboard data.")
-        }
-    }
-
-    private func pasteText(_ text: String, into element: XCUIElement, in app: XCUIApplication) {
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        XCTAssertTrue(pasteboard.setString(text, forType: .string))
-        focusEditableElement(element, in: app)
-        app.typeKey("v", modifierFlags: .command)
-    }
-
-    private func dismissTextSuggestions(in app: XCUIApplication) {
-        app.activate()
-        app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
-        RunLoop.current.run(until: Date().addingTimeInterval(0.2))
-    }
-
-    private func clearText(in element: XCUIElement, in app: XCUIApplication) {
-        focusEditableElement(element, in: app)
-        app.typeKey("a", modifierFlags: .command)
-        app.typeKey(XCUIKeyboardKey.delete.rawValue, modifierFlags: [])
-    }
-
-    private func thumbnailLoadedCount(in app: XCUIApplication) -> Int {
-        let cells = app.buttons.matching(identifier: "workspace-result-cell")
-        return (0..<cells.count).reduce(into: 0) { count, index in
-            let cell = cells.element(boundBy: index)
-            if accessibilityValue(of: cell) == "thumbnail loaded" {
-                count += 1
-            }
-        }
-    }
-
-    private func accessibilityValue(of element: XCUIElement) -> String? {
-        guard let rawValue = element.value else {
-            return nil
-        }
-        let description = String(describing: rawValue).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard description.isEmpty == false, description != "nil" else {
-            return nil
-        }
-        if description.hasPrefix("Optional("), description.hasSuffix(")") {
-            let content = description.dropFirst("Optional(".count).dropLast()
-            return String(content).trimmingCharacters(in: CharacterSet(charactersIn: "\""))
-        }
-        return description
-    }
-
-    private func embeddingCount(in runtimeRoot: URL, encoderVersion: String) throws -> Int {
-        try scalarCount(
-            in: appSupportRoot(in: runtimeRoot).appending(path: "library.sqlite"),
-            sql: "SELECT COUNT(*) FROM embeddings WHERE encoder_version = ?",
-            textBindings: [encoderVersion]
-        )
-    }
-
-    private func latestTrainingRun(in runtimeRoot: URL) throws -> TrainingRunSnapshot? {
-        let databaseURL = appSupportRoot(in: runtimeRoot).appending(path: "library.sqlite")
-        var handle: OpaquePointer?
-        guard sqlite3_open(databaseURL.path, &handle) == SQLITE_OK, let handle else {
-            sqlite3_close(handle)
-            throw NSError(
-                domain: "SemanticGalleryUITests",
-                code: 9,
-                userInfo: [NSLocalizedDescriptionKey: "Could not open the training database."]
-            )
-        }
-        defer { sqlite3_close(handle) }
-
-        var statement: OpaquePointer?
-        let sql = """
-        SELECT status, encoder_version
-        FROM training_runs
-        ORDER BY id DESC
-        LIMIT 1
-        """
-        guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK, let statement else {
-            sqlite3_finalize(statement)
-            throw NSError(
-                domain: "SemanticGalleryUITests",
-                code: 10,
-                userInfo: [NSLocalizedDescriptionKey: "Could not prepare the training query."]
-            )
-        }
-        defer { sqlite3_finalize(statement) }
-
-        guard sqlite3_step(statement) == SQLITE_ROW else {
-            return nil
-        }
-        guard
-            let statusPointer = sqlite3_column_text(statement, 0),
-            let encoderPointer = sqlite3_column_text(statement, 1)
-        else {
-            return nil
-        }
-        return TrainingRunSnapshot(
-            status: String(cString: statusPointer),
-            encoderVersion: String(cString: encoderPointer)
-        )
-    }
-
-    private func adaptedWeightFiles(in runtimeRoot: URL) -> [URL] {
-        files(
-            named: "weights.safetensors",
-            under: appSupportRoot(in: runtimeRoot).appending(path: "Models").appending(path: "Adapted")
-        )
-    }
-
-    private func adaptedSummaryFiles(in runtimeRoot: URL) -> [URL] {
-        files(
-            named: "summary.json",
-            under: appSupportRoot(in: runtimeRoot).appending(path: "Models").appending(path: "Adapted")
-        )
-    }
-
-    private func files(named name: String, under root: URL) -> [URL] {
-        guard FileManager.default.fileExists(atPath: root.path) else {
-            return []
-        }
-        guard let enumerator = FileManager.default.enumerator(
-            at: root,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            return []
-        }
-        return enumerator.compactMap { item in
-            guard let url = item as? URL else {
-                return nil
-            }
-            return url.lastPathComponent == name ? url : nil
-        }
-    }
-
-    private func makeEvidenceDirectory(named name: String) -> URL {
-        let root = ProcessInfo.processInfo.environment["SEMANTICGALLERY_UI_TEST_EVIDENCE_ROOT"]
-            .map { URL(filePath: $0, directoryHint: .isDirectory) }
-            ?? URL(filePath: "/tmp/semanticgallery-validation", directoryHint: .isDirectory)
-        let directory = root.appending(path: sanitizedFilename(name)).appending(path: UUID().uuidString)
-        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory
-    }
-
-    private func saveScreenshot(named name: String, in app: XCUIApplication, evidenceRoot: URL) {
-        app.activate()
-        let screenshot = XCUIScreen.main.screenshot()
-        let destinationURL = evidenceRoot.appending(path: "\(sanitizedFilename(name)).png")
-        try? screenshot.pngRepresentation.write(to: destinationURL, options: .atomic)
-        let attachment = XCTAttachment(screenshot: screenshot)
-        attachment.name = name
-        attachment.lifetime = .keepAlways
-        add(attachment)
-    }
-
-    private func recordMetric(
-        named name: String,
-        value: TimeInterval,
-        evidenceRoot: URL,
-        details: [String: String] = [:]
-    ) {
-        let destinationURL = evidenceRoot.appending(path: "metrics.jsonl")
-        var payload: [String: Any] = [
-            "metric": name,
-            "value": value,
-            "unit": "seconds",
-            "captured_at": ISO8601DateFormatter().string(from: Date()),
-        ]
-        if details.isEmpty == false {
-            payload["details"] = details
-        }
-        guard
-            let data = try? JSONSerialization.data(withJSONObject: payload, options: []),
-            let line = String(data: data, encoding: .utf8)?.appending("\n")
-        else {
-            return
-        }
-        if FileManager.default.fileExists(atPath: destinationURL.path) {
-            guard let handle = try? FileHandle(forWritingTo: destinationURL) else {
-                return
-            }
-            defer { try? handle.close() }
-            try? handle.seekToEnd()
-            try? handle.write(contentsOf: Data(line.utf8))
-        } else {
-            try? line.write(to: destinationURL, atomically: true, encoding: .utf8)
-        }
-
-        let attachment = XCTAttachment(string: line.trimmingCharacters(in: .whitespacesAndNewlines))
-        attachment.name = "\(name)-metric"
-        attachment.lifetime = .keepAlways
-        add(attachment)
-    }
-
-    private func sanitizedFilename(_ text: String) -> String {
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
-        let scalars = text.lowercased().unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" }
-        let collapsed = String(scalars)
-            .replacingOccurrences(of: "--", with: "-")
-            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
-        return collapsed.isEmpty ? "evidence" : collapsed
-    }
 }
 
 private extension URL {
@@ -2050,10 +1610,3 @@ private extension URL {
         FileManager.default.fileExists(atPath: path)
     }
 }
-
-private struct TrainingRunSnapshot {
-    let status: String
-    let encoderVersion: String
-}
-
-private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)

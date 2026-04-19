@@ -96,16 +96,18 @@ func installCoordinatorReportsArtifactFileCountsAndTiming() async throws {
 }
 
 @Test
-func repairDetectorRequiresRepairWhenArtifactsAreMissing() throws {
+func installationVerifierRejectsMissingArtifacts() throws {
+    /// Formal specification for callers:
+    /// Pre: no required artifact files exist under `paths.runtimeArtifactsRoot`.
+    /// Post after `isInstallationComplete()`:
+    /// the result is `false`.
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: root) }
 
-    let detector = RepairDetector(
-        installStateStore: InstallStateStore(paths: AppPaths(root: root))
-    )
+    let verifier = InstallationVerifier(paths: AppPaths(root: root))
 
-    #expect(try detector.requiresRepair())
+    #expect(try verifier.isInstallationComplete() == false)
 }
 
 @Test
@@ -128,8 +130,8 @@ func installCoordinatorReplacesIncompleteArtifactsBeforePreparing() async throws
 
     _ = try await coordinator.prepare()
 
-    let installStateStore = InstallStateStore(paths: paths)
-    #expect(try installStateStore.isInstallationComplete())
+    let installationVerifier = InstallationVerifier(paths: paths)
+    #expect(try installationVerifier.isInstallationComplete())
 
     let summaryData = try Data(contentsOf: staleSummaryURL)
     let summary = try #require(try JSONSerialization.jsonObject(with: summaryData) as? [String: Any])

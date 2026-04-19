@@ -3,6 +3,12 @@ import Testing
 @testable import SemanticGalleryPersistence
 @testable import SemanticGallerySearch
 
+/// Formal specification for callers:
+/// Pre: all visible file instances under `folderAbsolutePath` are `V`.
+/// Post after `search(folderAbsolutePath, "", limit)`:
+/// the result equals the first `limit` elements of `V` in database order.
+/// Post after `search(folderAbsolutePath, q, limit)` with `q ≠ ""`:
+/// the result contains only members of `V` whose lexical search score matches `q`.
 @Test
 func searchCoordinatorReturnsVisibleFolderItemsForEmptyQueryAndFiltersTextMatches() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -43,25 +49,14 @@ func searchCoordinatorReturnsVisibleFolderItemsForEmptyQueryAndFiltersTextMatche
     #expect(filteredResults.map(\.absolutePath) == ["/tmp/library/Trips/one.jpg"])
 }
 
-@Test
-@MainActor
-func selectionStateSupportsToggleSelectAllAndClear() {
-    let items = [
-        SearchAssetRecord(assetID: 1, absolutePath: "/tmp/library/one.jpg", thumbnailPath: nil),
-        SearchAssetRecord(assetID: 2, absolutePath: "/tmp/library/two.jpg", thumbnailPath: nil),
-    ]
-    let state = SelectionState()
-
-    state.toggle(assetID: 1)
-    #expect(state.selectedAssetIDs == [1])
-
-    state.selectAll(items: items)
-    #expect(state.selectedAssetIDs == [1, 2])
-
-    state.clear()
-    #expect(state.selectedAssetIDs.isEmpty)
-}
-
+/// Formal specification for callers:
+/// Pre: embeddings exist only for visible files in folder `A`.
+/// Post after `folderSearchIndex(A)`:
+/// `items = embeddedVisibleFiles(A)`.
+/// Post after `vectorSearch(folderSearchIndex(A), q, limit)`:
+/// the result is exactly the `FolderSearchIndex.search(q, limit)` projection.
+/// Post after `searchSimilar(A, resultID, limit)`:
+/// the source record is excluded and only folder `A` is searched.
 @Test
 func searchCoordinatorBuildsFolderScopedVectorViewAndFindsSimilarImages() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -106,15 +101,15 @@ func searchCoordinatorBuildsFolderScopedVectorViewAndFindsSimilarImages() throws
     try database.upsertEmbedding(assetID: thirdAssetID, encoderVersion: "stage1", vector: [0.0, 1.0])
 
     let coordinator = SearchCoordinator(database: database, encoderVersion: "stage1")
-    let activeView = try coordinator.activeSearchView(folderAbsolutePath: "/tmp/folder-a")
-    let vectorMatches = coordinator.vectorSearch(activeView: activeView, queryVector: [1.0, 0.0], limit: 10)
+    let searchIndex = try coordinator.folderSearchIndex(folderAbsolutePath: "/tmp/folder-a")
+    let vectorMatches = coordinator.vectorSearch(searchIndex: searchIndex, queryVector: [1.0, 0.0], limit: 10)
     let similarMatches = try coordinator.searchSimilar(
         folderAbsolutePath: "/tmp/folder-a",
-        recordID: activeView.items[0].id,
+        resultID: searchIndex.items[0].id,
         limit: 10
     )
 
-    #expect(activeView.items.map(\.absolutePath) == [
+    #expect(searchIndex.items.map(\.absolutePath) == [
         "/tmp/folder-a/one.jpg",
         "/tmp/folder-a/two.jpg",
     ])

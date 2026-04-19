@@ -12,6 +12,7 @@ UI_TEST_EVIDENCE_ROOT="${SEMANTICGALLERY_UI_TEST_EVIDENCE_ROOT:-/tmp/semanticgal
 RESULT_BUNDLE_PATH="${SEMANTICGALLERY_UI_TEST_RESULT_BUNDLE_PATH:-/tmp/semanticgallery-ui-results.xcresult}"
 UI_TEST_CLEAN_DERIVED_DATA="${SEMANTICGALLERY_UI_TEST_CLEAN_DERIVED_DATA:-0}"
 UI_TEST_TARGET_APP_PATH="${SEMANTICGALLERY_UI_TEST_TARGET_APP_PATH:-__TESTROOT__/Debug/SemanticGallery.app}"
+UI_TEST_ONLY_TESTING="${SEMANTICGALLERY_UI_TEST_ONLY_TESTING:-}"
 
 download_artifact_file() {
   local repo_type="$1"
@@ -148,6 +149,17 @@ chmod -R u+rwX,go+rX "$UI_TEST_FIXTURE_ROOT" "$ARTIFACT_FIXTURE_ROOT"
 export SEMANTICGALLERY_UI_TEST_ARTIFACT_FIXTURE_ROOT="$ARTIFACT_FIXTURE_ROOT"
 export SEMANTICGALLERY_UI_TEST_FIXTURE_ROOT="$UI_TEST_FIXTURE_ROOT"
 export SEMANTICGALLERY_UI_TEST_EVIDENCE_ROOT="$UI_TEST_EVIDENCE_ROOT"
+export SEMANTICGALLERY_BUNDLED_ARTIFACT_SOURCE_ROOT="$ARTIFACT_FIXTURE_ROOT"
+export SEMANTICGALLERY_UI_TEST_TARGET_APP_PATH_RESOLVED="$DERIVED_DATA_PATH/Build/Products/Debug/SemanticGallery.app"
+
+XCODEBUILD_TEST_SELECTION_ARGS=()
+if [[ -n "$UI_TEST_ONLY_TESTING" ]]; then
+  IFS=',' read -r -a only_testing_targets <<< "$UI_TEST_ONLY_TESTING"
+  for only_testing_target in "${only_testing_targets[@]}"; do
+    [[ -n "$only_testing_target" ]] || continue
+    XCODEBUILD_TEST_SELECTION_ARGS+=("-only-testing:$only_testing_target")
+  done
+fi
 
 xcodebuild build-for-testing \
   -project App/SemanticGallery.xcodeproj \
@@ -170,4 +182,5 @@ cp "$XCTESTRUN_PATH" "$PATCHED_XCTESTRUN_PATH"
 xcodebuild test-without-building \
   -xctestrun "$PATCHED_XCTESTRUN_PATH" \
   -destination 'platform=macOS,arch=arm64' \
+  "${XCODEBUILD_TEST_SELECTION_ARGS[@]}" \
   -resultBundlePath "$RESULT_BUNDLE_PATH"

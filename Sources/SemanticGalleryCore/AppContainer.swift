@@ -1,13 +1,13 @@
 @MainActor
 public struct AppContainer {
-    public let statusStore: AppStatusStore
-    public let libraryStateStore: LibraryStateStore
+    public let statusState: StatusState
+    public let libraryState: LibraryState
 
     public init(
-        statusStore: AppStatusStore = AppStatusStore(),
-        libraryStateStore: LibraryStateStore = LibraryStateStore()
+        statusState: StatusState = StatusState(),
+        libraryState: LibraryState = LibraryState()
     ) {
-        self.statusStore = statusStore
-        self.libraryStateStore = libraryStateStore
+        self.statusState = statusState
+        self.libraryState = libraryState
     }
 }

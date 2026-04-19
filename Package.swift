@@ -137,7 +137,7 @@ let package = Package(
         ),
         .testTarget(
             name: "SemanticGallerySettingsTests",
-            dependencies: ["SemanticGalleryCore", "SemanticGallerySettings", "SemanticGalleryPersistence"],
+            dependencies: ["SemanticGalleryCore", "SemanticGallerySettings", "SemanticGalleryPersistence", "SemanticGalleryUI"],
             path: "Tests/SemanticGallerySettingsTests"
         ),
     ]

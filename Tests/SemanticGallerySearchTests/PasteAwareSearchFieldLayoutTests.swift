@@ -8,6 +8,9 @@ func pasteAwareSearchFieldContainerUsesSingleLineVerticalCentering() {
     let container = PasteAwareSearchFieldContainer(frame: NSRect(x: 0, y: 0, width: 420, height: 44))
 
     #expect(container.subviews.contains(container.textField))
+    #expect(container.textField.isEditable)
+    #expect(container.textField.isSelectable)
+    #expect(container.textField.isEnabled)
     #expect(container.textField.isBordered == false)
     #expect(container.textField.cell?.usesSingleLineMode == true)
     #expect(container.textField.cell?.isScrollable == true)

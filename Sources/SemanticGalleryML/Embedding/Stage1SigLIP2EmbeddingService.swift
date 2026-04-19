@@ -42,12 +42,16 @@ public actor Stage1SigLIP2EmbeddingService: GalleryEmbeddingService {
         }
 
         let loaded = try await loadedSession()
-        let pixelValues = try urls.map {
-            try SigLIP2Support.preprocessImage(
-                at: $0,
-                imageSize: loaded.config.visionConfig.imageSize,
+        let imageSize = loaded.config.visionConfig.imageSize
+        var pixelValues: [MLXArray] = []
+        pixelValues.reserveCapacity(urls.count)
+        for url in urls {
+            let values = try SigLIP2Support.preprocessImage(
+                at: url,
+                imageSize: imageSize,
                 ciContext: ciContext
             )
+            pixelValues.append(values)
         }
         let batch = concatenated(pixelValues, axis: 0)
         let features = loaded.model.getImageFeatures(pixelValues: batch)

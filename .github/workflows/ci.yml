@@ -15,7 +15,12 @@ jobs:
         with:
           xcode-version: latest-stable
 
+      - name: Prepare bundled artifacts
+        run: ./scripts/prepare-bundled-artifacts.sh "$RUNNER_TEMP/semanticgallery-artifacts"
+
       - name: Run Swift tests
+        env:
+          SEMANTICGALLERY_UI_TEST_ARTIFACT_FIXTURE_ROOT: ${{ runner.temp }}/semanticgallery-artifacts
         run: swift test
 
       - name: Validate shell scripts

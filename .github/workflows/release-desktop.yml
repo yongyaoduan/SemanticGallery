@@ -23,6 +23,8 @@ jobs:
         run: ./scripts/prepare-bundled-artifacts.sh "$RUNNER_TEMP/semanticgallery-artifacts"
 
       - name: Run Swift tests
+        env:
+          SEMANTICGALLERY_UI_TEST_ARTIFACT_FIXTURE_ROOT: ${{ runner.temp }}/semanticgallery-artifacts
         run: swift test
 
       - name: Build desktop dmg

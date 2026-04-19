@@ -32,7 +32,9 @@ jobs:
         env:
           SEMANTICGALLERY_BUNDLED_ARTIFACT_SOURCE_ROOT: ${{ runner.temp }}/semanticgallery-artifacts
         run: |
-          dmg_path="$(./scripts/build-dmg.sh)"
+          log_path="$(mktemp)"
+          ./scripts/build-dmg.sh | tee "$log_path"
+          dmg_path="$(tail -n 1 "$log_path")"
           echo "dmg_path=$dmg_path" >> "$GITHUB_OUTPUT"
 
       - name: Upload build artifact

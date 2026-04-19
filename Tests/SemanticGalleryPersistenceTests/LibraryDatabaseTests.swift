@@ -81,9 +81,11 @@ func libraryDatabaseWaitsForShortLivedWriteLocks() throws {
     _ = try database.upsertFolder(absolutePath: "/tmp/library", bookmarkData: nil, isActive: true)
     let elapsed = Date().timeIntervalSince(start)
     releaseSemaphore.wait()
+    let busyTimeoutMilliseconds = Double(try pragmaValue(named: "busy_timeout", in: databaseURL) ?? "0") ?? 0
+    let deadline = (busyTimeoutMilliseconds / 1000.0) + 2.0
 
     #expect(elapsed >= 0.25)
-    #expect(elapsed < 5.0)
+    #expect(elapsed < deadline)
 }
 
 @Test

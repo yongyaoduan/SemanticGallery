@@ -2,36 +2,36 @@ import AppKit
 import XCTest
 import SQLite3
 
-private struct OpenPanelContext {
+struct OpenPanelContext {
     let ownerApp: XCUIApplication
     let panel: XCUIElement
 }
 
-private struct SemanticSearchFixture {
+struct SemanticSearchFixture {
     let folderURL: URL
     let expectedTopResults: [String]
 }
 
-private struct TrainingRunSnapshot {
+struct TrainingRunSnapshot {
     let status: String
     let encoderVersion: String
 }
 
-private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
 @MainActor
 extension PhaseAFlowTests {
-    private func identifiedElement(in app: XCUIApplication, identifier: String) -> XCUIElement {
+    func identifiedElement(in app: XCUIApplication, identifier: String) -> XCUIElement {
         app.descendants(matching: .any)[identifier]
     }
 
-    private func makeTemporaryDirectory() -> URL {
+    func makeTemporaryDirectory() -> URL {
         let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory
     }
 
-    private func fixtureFolder(named name: String) throws -> URL {
+    func fixtureFolder(named name: String) throws -> URL {
         let url = fixtureRoot().appending(path: "SemanticGalleryUITest\(name)")
         guard url.fileExists else {
             throw NSError(
@@ -43,7 +43,7 @@ extension PhaseAFlowTests {
         return url
     }
 
-    private func semanticYellowCatFixture() throws -> SemanticSearchFixture {
+    func semanticYellowCatFixture() throws -> SemanticSearchFixture {
         let folderURL = fixtureRoot().appending(path: "SemanticGalleryUITestSemanticYellowCat")
         let expectedTopResults = ["study-01.jpg", "study-02.jpg", "study-03.jpg"]
         let expectedFiles: Set<String> = [
@@ -66,13 +66,13 @@ extension PhaseAFlowTests {
         return SemanticSearchFixture(folderURL: folderURL, expectedTopResults: expectedTopResults)
     }
 
-    private func fixtureRoot() -> URL {
+    func fixtureRoot() -> URL {
         ProcessInfo.processInfo.environment["SEMANTICGALLERY_UI_TEST_FIXTURE_ROOT"]
             .map { URL(filePath: $0, directoryHint: .isDirectory) }
             ?? URL(filePath: "/tmp/semanticgallery-ui-fixtures", directoryHint: .isDirectory)
     }
 
-    private func installedArtifactFixtureRoot() throws -> URL {
+    func installedArtifactFixtureRoot() throws -> URL {
         let candidates = [
             ProcessInfo.processInfo.environment["SEMANTICGALLERY_UI_TEST_ARTIFACT_FIXTURE_ROOT"],
             "/tmp/semanticgallery-ui-artifacts",
@@ -91,32 +91,32 @@ extension PhaseAFlowTests {
         return url
     }
 
-    private func copyTree(from sourceRoot: URL, to destinationRoot: URL) throws {
+    func copyTree(from sourceRoot: URL, to destinationRoot: URL) throws {
         try FileManager.default.copyItem(at: sourceRoot, to: destinationRoot)
     }
 
-    private func embeddingCount(in runtimeRoot: URL) throws -> Int {
+    func embeddingCount(in runtimeRoot: URL) throws -> Int {
         try scalarCount(
             in: appSupportRoot(in: runtimeRoot).appending(path: "library.sqlite"),
             sql: "SELECT COUNT(*) FROM embeddings"
         )
     }
 
-    private func totalVisibleFileCount(in runtimeRoot: URL) throws -> Int {
+    func totalVisibleFileCount(in runtimeRoot: URL) throws -> Int {
         try scalarCount(
             in: appSupportRoot(in: runtimeRoot).appending(path: "library.sqlite"),
             sql: "SELECT COUNT(*) FROM file_instances WHERE is_present = 1"
         )
     }
 
-    private func totalFileInstanceCount(in runtimeRoot: URL) throws -> Int {
+    func totalFileInstanceCount(in runtimeRoot: URL) throws -> Int {
         try scalarCount(
             in: appSupportRoot(in: runtimeRoot).appending(path: "library.sqlite"),
             sql: "SELECT COUNT(*) FROM file_instances"
         )
     }
 
-    private func scalarCount(in databaseURL: URL, sql: String, textBindings: [String] = []) throws -> Int {
+    func scalarCount(in databaseURL: URL, sql: String, textBindings: [String] = []) throws -> Int {
         var handle: OpaquePointer?
         guard sqlite3_open(databaseURL.path, &handle) == SQLITE_OK, let handle else {
             sqlite3_close(handle)
@@ -163,11 +163,11 @@ extension PhaseAFlowTests {
         return Int(sqlite3_column_int(statement, 0))
     }
 
-    private func supportedImageCount(in folderURL: URL) -> Int {
+    func supportedImageCount(in folderURL: URL) -> Int {
         supportedImageURLs(in: folderURL).count
     }
 
-    private func supportedImageURLs(in folderURL: URL) -> [URL] {
+    func supportedImageURLs(in folderURL: URL) -> [URL] {
         let allowedExtensions = Set(["jpg", "jpeg", "png", "heic", "heif"])
         guard let enumerator = FileManager.default.enumerator(at: folderURL, includingPropertiesForKeys: [.isRegularFileKey]) else {
             return []
@@ -182,31 +182,31 @@ extension PhaseAFlowTests {
         .sorted { $0.path < $1.path }
     }
 
-    private func appSupportRoot(in runtimeRoot: URL) -> URL {
+    func appSupportRoot(in runtimeRoot: URL) -> URL {
         runtimeRoot.appending(path: "SemanticGallery")
     }
 
-    private func actualAppSupportRoot() -> URL {
+    func actualAppSupportRoot() -> URL {
         userHomeRoot().appending(path: "Library/Application Support/SemanticGallery")
     }
 
-    private func cachesRoot(in runtimeRoot: URL) -> URL {
+    func cachesRoot(in runtimeRoot: URL) -> URL {
         appSupportRoot(in: runtimeRoot).appending(path: "Caches")
     }
 
-    private func actualCachesRoot() -> URL {
+    func actualCachesRoot() -> URL {
         actualAppSupportRoot().appending(path: "Caches")
     }
 
-    private func logsRoot(in runtimeRoot: URL) -> URL {
+    func logsRoot(in runtimeRoot: URL) -> URL {
         appSupportRoot(in: runtimeRoot).appending(path: "Logs")
     }
 
-    private func actualLogsRoot() -> URL {
+    func actualLogsRoot() -> URL {
         actualAppSupportRoot().appending(path: "Logs")
     }
 
-    private func realWorldAlbumFolder() throws -> URL {
+    func realWorldAlbumFolder() throws -> URL {
         let configuredPath = ProcessInfo.processInfo.environment["SEMANTICGALLERY_UI_REAL_FOLDER"]
         let fallbackPath = userHomeRoot().appending(path: "Pictures/SemanticGalleryXCUIAlbum").path(percentEncoded: false)
         let folderURL = URL(
@@ -223,31 +223,31 @@ extension PhaseAFlowTests {
         return folderURL
     }
 
-    private func installStateFile(in runtimeRoot: URL) -> URL {
+    func installStateFile(in runtimeRoot: URL) -> URL {
         appSupportRoot(in: runtimeRoot).appending(path: "install-state.json")
     }
 
-    private func actualInstallStateFile() -> URL {
+    func actualInstallStateFile() -> URL {
         actualAppSupportRoot().appending(path: "install-state.json")
     }
 
-    private func actualPreferencesFile() -> URL {
+    func actualPreferencesFile() -> URL {
         userHomeRoot().appending(path: "Library/Preferences/com.semanticgallery.app.plist")
     }
 
-    private func actualSavedStateRoot() -> URL {
+    func actualSavedStateRoot() -> URL {
         userHomeRoot().appending(path: "Library/Saved Application State/com.semanticgallery.app.savedState")
     }
 
-    private func actualContainersRoot() -> URL {
+    func actualContainersRoot() -> URL {
         userHomeRoot().appending(path: "Library/Containers/com.semanticgallery.app")
     }
 
-    private func actualApplicationScriptsRoot() -> URL {
+    func actualApplicationScriptsRoot() -> URL {
         userHomeRoot().appending(path: "Library/Application Scripts/com.semanticgallery.app")
     }
 
-    private func actualByHostPreferenceFiles() -> [URL] {
+    func actualByHostPreferenceFiles() -> [URL] {
         let byHostRoot = userHomeRoot().appending(path: "Library/Preferences/ByHost")
         guard byHostRoot.fileExists,
               let children = try? FileManager.default.contentsOfDirectory(
@@ -260,7 +260,7 @@ extension PhaseAFlowTests {
         return children.filter { $0.lastPathComponent.hasPrefix("com.semanticgallery.app.") }
     }
 
-    private func userHomeRoot() -> URL {
+    func userHomeRoot() -> URL {
         let directPath = "/Users/\(NSUserName())"
         let directURL = URL(filePath: directPath, directoryHint: .isDirectory)
         if directURL.fileExists {
@@ -269,7 +269,7 @@ extension PhaseAFlowTests {
         return URL(filePath: NSHomeDirectory(), directoryHint: .isDirectory)
     }
 
-    private func assertBundledArtifactsAvailable(
+    func assertBundledArtifactsAvailable(
         at appURL: URL,
         file: StaticString = #filePath,
         line: UInt = #line
@@ -304,7 +304,7 @@ extension PhaseAFlowTests {
         )
     }
 
-    private func recentLogLines(at url: URL, count: Int = 20) -> String {
+    func recentLogLines(at url: URL, count: Int = 20) -> String {
         guard let text = try? String(contentsOf: url, encoding: .utf8) else {
             return "The runtime log file is not available at \(url.path)."
         }
@@ -314,7 +314,7 @@ extension PhaseAFlowTests {
             .joined(separator: "\n")
     }
 
-    private func mountedDMGAppURL() throws -> URL {
+    func mountedDMGAppURL() throws -> URL {
         let volumeRoot = URL(filePath: "/Volumes", directoryHint: .isDirectory)
         let candidates = (try FileManager.default.contentsOfDirectory(
             at: volumeRoot,
@@ -343,7 +343,7 @@ extension PhaseAFlowTests {
         return url
     }
 
-    private func removeInstalledAppArtifacts() throws {
+    func removeInstalledAppArtifacts() throws {
         for url in [
             actualAppSupportRoot(),
             actualCachesRoot(),
@@ -419,7 +419,7 @@ extension PhaseAFlowTests {
         }
     }
 
-    private func removeItemIfPossible(at url: URL) throws {
+    func removeItemIfPossible(at url: URL) throws {
         do {
             try FileManager.default.removeItem(at: url)
         } catch let error as CocoaError where error.code == .fileWriteNoPermission {
@@ -427,16 +427,16 @@ extension PhaseAFlowTests {
         }
     }
 
-    private func artifactFile(in runtimeRoot: URL, relativePath: String) -> URL {
+    func artifactFile(in runtimeRoot: URL, relativePath: String) -> URL {
         appSupportRoot(in: runtimeRoot).appending(path: "Artifacts").appending(path: relativePath)
     }
 
-    private func fileSize(at url: URL) throws -> Int64 {
+    func fileSize(at url: URL) throws -> Int64 {
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
         return (attributes[.size] as? NSNumber)?.int64Value ?? 0
     }
 
-    private func waitForResultCellCount(in app: XCUIApplication, expected: Int, timeout: TimeInterval) -> Bool {
+    func waitForResultCellCount(in app: XCUIApplication, expected: Int, timeout: TimeInterval) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         repeat {
             if app.buttons.matching(identifier: "workspace-result-cell").count == expected {
@@ -448,7 +448,7 @@ extension PhaseAFlowTests {
         return false
     }
 
-    private func waitForCondition(timeout: TimeInterval, predicate: () -> Bool) -> Bool {
+    func waitForCondition(timeout: TimeInterval, predicate: () -> Bool) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         repeat {
             if predicate() {
@@ -460,7 +460,7 @@ extension PhaseAFlowTests {
         return false
     }
 
-    private func waitForHierarchyMarkers(
+    func waitForHierarchyMarkers(
         in app: XCUIApplication,
         markers: [String],
         timeout: TimeInterval
@@ -471,7 +471,7 @@ extension PhaseAFlowTests {
         }
     }
 
-    private func firstVisibleResultLabel(in app: XCUIApplication) -> String? {
+    func firstVisibleResultLabel(in app: XCUIApplication) -> String? {
         let cells = app.buttons.matching(identifier: "workspace-result-cell")
         guard cells.count > 0 else {
             return nil
@@ -479,12 +479,12 @@ extension PhaseAFlowTests {
         return cells.element(boundBy: 0).label
     }
 
-    private func visibleResultLabels(in app: XCUIApplication) -> [String] {
+    func visibleResultLabels(in app: XCUIApplication) -> [String] {
         let cells = app.buttons.matching(identifier: "workspace-result-cell")
         return (0..<cells.count).map { cells.element(boundBy: $0).label }
     }
 
-    private func hittableResultLabels(in app: XCUIApplication) -> [String] {
+    func hittableResultLabels(in app: XCUIApplication) -> [String] {
         let cells = app.buttons.matching(identifier: "workspace-result-cell")
         return (0..<cells.count).compactMap { index in
             let cell = cells.element(boundBy: index)
@@ -492,7 +492,7 @@ extension PhaseAFlowTests {
         }
     }
 
-    private func pasteImage(fileURL: URL, into element: XCUIElement, in app: XCUIApplication) {
+    func pasteImage(fileURL: URL, into element: XCUIElement, in app: XCUIApplication) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         XCTAssertTrue(pasteboard.writeObjects([fileURL as NSURL]))
@@ -500,7 +500,7 @@ extension PhaseAFlowTests {
         app.typeKey("v", modifierFlags: .command)
     }
 
-    private func pasteImage(data: Data, filename: String, into element: XCUIElement, in app: XCUIApplication) {
+    func pasteImage(data: Data, filename: String, into element: XCUIElement, in app: XCUIApplication) {
         let temporaryURL = FileManager.default.temporaryDirectory.appending(path: "\(UUID().uuidString)-\(filename)")
         do {
             try data.write(to: temporaryURL)
@@ -510,7 +510,7 @@ extension PhaseAFlowTests {
         }
     }
 
-    private func pasteText(_ text: String, into element: XCUIElement, in app: XCUIApplication) {
+    func pasteText(_ text: String, into element: XCUIElement, in app: XCUIApplication) {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         XCTAssertTrue(pasteboard.setString(text, forType: .string))
@@ -518,19 +518,19 @@ extension PhaseAFlowTests {
         app.typeKey("v", modifierFlags: .command)
     }
 
-    private func dismissTextSuggestions(in app: XCUIApplication) {
+    func dismissTextSuggestions(in app: XCUIApplication) {
         app.activate()
         app.typeKey(XCUIKeyboardKey.escape.rawValue, modifierFlags: [])
         RunLoop.current.run(until: Date().addingTimeInterval(0.2))
     }
 
-    private func clearText(in element: XCUIElement, in app: XCUIApplication) {
+    func clearText(in element: XCUIElement, in app: XCUIApplication) {
         focusEditableElement(element, in: app)
         app.typeKey("a", modifierFlags: .command)
         app.typeKey(XCUIKeyboardKey.delete.rawValue, modifierFlags: [])
     }
 
-    private func thumbnailLoadedCount(in app: XCUIApplication) -> Int {
+    func thumbnailLoadedCount(in app: XCUIApplication) -> Int {
         let cells = app.buttons.matching(identifier: "workspace-result-cell")
         return (0..<cells.count).reduce(into: 0) { count, index in
             let cell = cells.element(boundBy: index)
@@ -540,7 +540,7 @@ extension PhaseAFlowTests {
         }
     }
 
-    private func accessibilityValue(of element: XCUIElement) -> String? {
+    func accessibilityValue(of element: XCUIElement) -> String? {
         guard let rawValue = element.value else {
             return nil
         }
@@ -555,7 +555,7 @@ extension PhaseAFlowTests {
         return description
     }
 
-    private func embeddingCount(in runtimeRoot: URL, encoderVersion: String) throws -> Int {
+    func embeddingCount(in runtimeRoot: URL, encoderVersion: String) throws -> Int {
         try scalarCount(
             in: appSupportRoot(in: runtimeRoot).appending(path: "library.sqlite"),
             sql: "SELECT COUNT(*) FROM embeddings WHERE encoder_version = ?",
@@ -563,7 +563,7 @@ extension PhaseAFlowTests {
         )
     }
 
-    private func latestTrainingRun(in runtimeRoot: URL) throws -> TrainingRunSnapshot? {
+    func latestTrainingRun(in runtimeRoot: URL) throws -> TrainingRunSnapshot? {
         let databaseURL = appSupportRoot(in: runtimeRoot).appending(path: "library.sqlite")
         var handle: OpaquePointer?
         guard sqlite3_open(databaseURL.path, &handle) == SQLITE_OK, let handle else {
@@ -608,21 +608,21 @@ extension PhaseAFlowTests {
         )
     }
 
-    private func adaptedWeightFiles(in runtimeRoot: URL) -> [URL] {
+    func adaptedWeightFiles(in runtimeRoot: URL) -> [URL] {
         files(
             named: "weights.safetensors",
             under: appSupportRoot(in: runtimeRoot).appending(path: "Models").appending(path: "Adapted")
         )
     }
 
-    private func adaptedSummaryFiles(in runtimeRoot: URL) -> [URL] {
+    func adaptedSummaryFiles(in runtimeRoot: URL) -> [URL] {
         files(
             named: "summary.json",
             under: appSupportRoot(in: runtimeRoot).appending(path: "Models").appending(path: "Adapted")
         )
     }
 
-    private func files(named name: String, under root: URL) -> [URL] {
+    func files(named name: String, under root: URL) -> [URL] {
         guard FileManager.default.fileExists(atPath: root.path) else {
             return []
         }
@@ -641,7 +641,7 @@ extension PhaseAFlowTests {
         }
     }
 
-    private func makeEvidenceDirectory(named name: String) -> URL {
+    func makeEvidenceDirectory(named name: String) -> URL {
         let root = ProcessInfo.processInfo.environment["SEMANTICGALLERY_UI_TEST_EVIDENCE_ROOT"]
             .map { URL(filePath: $0, directoryHint: .isDirectory) }
             ?? URL(filePath: "/tmp/semanticgallery-validation", directoryHint: .isDirectory)
@@ -650,9 +650,28 @@ extension PhaseAFlowTests {
         return directory
     }
 
-    private func saveScreenshot(named name: String, in app: XCUIApplication, evidenceRoot: URL) {
+    func saveScreenshot(named name: String, in app: XCUIApplication, evidenceRoot: URL) {
         app.activate()
-        let screenshot = XCUIScreen.main.screenshot()
+        let screenshot: XCUIScreenshot
+        if app.windows.firstMatch.exists {
+            screenshot = app.windows.firstMatch.screenshot()
+        } else {
+            screenshot = app.screenshot()
+        }
+        persistScreenshot(screenshot, named: name, evidenceRoot: evidenceRoot)
+    }
+
+    func saveScreenshot(named name: String, of element: XCUIElement, evidenceRoot: URL) {
+        let screenshot: XCUIScreenshot
+        if element.exists {
+            screenshot = element.screenshot()
+        } else {
+            screenshot = XCUIScreen.main.screenshot()
+        }
+        persistScreenshot(screenshot, named: name, evidenceRoot: evidenceRoot)
+    }
+
+    private func persistScreenshot(_ screenshot: XCUIScreenshot, named name: String, evidenceRoot: URL) {
         let destinationURL = evidenceRoot.appending(path: "\(sanitizedFilename(name)).png")
         try? screenshot.pngRepresentation.write(to: destinationURL, options: .atomic)
         let attachment = XCTAttachment(screenshot: screenshot)
@@ -661,7 +680,7 @@ extension PhaseAFlowTests {
         add(attachment)
     }
 
-    private func recordMetric(
+    func recordMetric(
         named name: String,
         value: TimeInterval,
         evidenceRoot: URL,
@@ -700,7 +719,7 @@ extension PhaseAFlowTests {
         add(attachment)
     }
 
-    private func sanitizedFilename(_ text: String) -> String {
+    func sanitizedFilename(_ text: String) -> String {
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
         let scalars = text.lowercased().unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" }
         let collapsed = String(scalars)

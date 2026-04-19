@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		A0000000000000000000000A /* SemanticGalleryApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000006 /* SemanticGalleryApp.swift */; };
 		A0000000000000000000000B /* PhaseAFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000007 /* PhaseAFlowTests.swift */; };
+		A0000000000000000000002E /* PhaseAFlowTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000002F /* PhaseAFlowTestSupport.swift */; };
 		A0000000000000000000002A /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000002B /* Assets.xcassets */; };
 		A00000000000000000000021 /* SemanticGalleryAppShell in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000020 /* SemanticGalleryAppShell */; };
 		A00000000000000000000023 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A00000000000000000000022 /* XCTest.framework */; };
@@ -34,6 +35,7 @@
 		A00000000000000000000009 /* SemanticGalleryUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SemanticGalleryUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A00000000000000000000022 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = System/Library/Frameworks/XCTest.framework; sourceTree = SDKROOT; };
 		A00000000000000000000024 /* ArtifactEncodingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticGalleryUITests/ArtifactEncodingTests.swift; sourceTree = SOURCE_ROOT; };
+		A0000000000000000000002F /* PhaseAFlowTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticGalleryUITests/PhaseAFlowTestSupport.swift; sourceTree = SOURCE_ROOT; };
 		A0000000000000000000002B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = SemanticGallery/Assets.xcassets; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
@@ -90,6 +92,7 @@
 			children = (
 				A00000000000000000000024 /* ArtifactEncodingTests.swift */,
 				A00000000000000000000007 /* PhaseAFlowTests.swift */,
+				A0000000000000000000002F /* PhaseAFlowTestSupport.swift */,
 			);
 			sourceTree = "<group>";
 		};
@@ -236,6 +239,7 @@
 			files = (
 				A00000000000000000000025 /* ArtifactEncodingTests.swift in Sources */,
 				A0000000000000000000000B /* PhaseAFlowTests.swift in Sources */,
+				A0000000000000000000002E /* PhaseAFlowTestSupport.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

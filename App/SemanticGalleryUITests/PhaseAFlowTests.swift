@@ -1036,6 +1036,111 @@ final class PhaseAFlowTests: XCTestCase {
         saveScreenshot(named: "05-after-delete", in: app, evidenceRoot: evidenceRoot)
     }
 
+    func testReadmeDemoCapturesKeyScreens() throws {
+        let runtimeRoot = makeTemporaryDirectory()
+        let selectedFolder = try fixtureFolder(named: "ReadmeDemo")
+        defer { try? FileManager.default.removeItem(at: runtimeRoot) }
+        let evidenceRoot = makeEvidenceDirectory(named: "readme-demo")
+
+        try createInstalledRuntime(at: runtimeRoot)
+
+        let suiteName = "SemanticGalleryUITests.\(UUID().uuidString)"
+        defer { UserDefaults(suiteName: suiteName)?.removePersistentDomain(forName: suiteName) }
+
+        let app = configuredApp(
+            runtimeRoot: runtimeRoot,
+            suiteName: suiteName,
+            useStubDownloads: true,
+            artifactSourceRoot: nil,
+            installStepDelayMilliseconds: 0,
+            folderPreparationDelayMilliseconds: 900
+        )
+
+        launchConfiguredApplication(app)
+        XCTAssertTrue(app.buttons["open-settings-button"].waitForExistence(timeout: 5))
+        saveScreenshot(named: "01-main-interface", in: app, evidenceRoot: evidenceRoot)
+
+        clickElement(app.buttons["open-settings-button"], in: app)
+        let settingsWindow = settingsWindow(in: app)
+        XCTAssertTrue(settingsWindow.waitForExistence(timeout: 5), app.debugDescription)
+        let chooseFolderButton = app.buttons["settings-choose-folder-button"]
+        XCTAssertTrue(chooseFolderButton.waitForExistence(timeout: 5))
+        saveScreenshot(named: "02-open-settings", of: settingsWindow, evidenceRoot: evidenceRoot)
+
+        clickElement(chooseFolderButton, in: app)
+        chooseFolderThroughOpenPanel(in: app, folderURL: selectedFolder)
+
+        let selectedFolderText = app.staticTexts["settings-selected-folder"]
+        XCTAssertTrue(selectedFolderText.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(
+            waitForDisplayedText(of: selectedFolderText, toEqual: selectedFolder.path(percentEncoded: false), timeout: 5),
+            "Current label: \(selectedFolderText.label) value: \(String(describing: selectedFolderText.value))"
+        )
+        saveScreenshot(named: "03-folder-selected", of: settingsWindow, evidenceRoot: evidenceRoot)
+
+        XCTAssertTrue(waitForSettingsBusyState(in: app, title: "Indexing", timeout: 15), app.debugDescription)
+        let initialProgress = currentSettingsProgressPercentage(in: app) ?? 0
+        XCTAssertTrue(
+            waitForCondition(timeout: 30) {
+                guard self.displayedText(of: self.identifiedElement(in: app, identifier: "settings-status-title")) == "Indexing",
+                      let progress = self.currentSettingsProgressPercentage(in: app) else {
+                    return false
+                }
+                return progress > initialProgress
+            },
+            app.debugDescription
+        )
+        saveScreenshot(named: "04-indexing", of: settingsWindow, evidenceRoot: evidenceRoot)
+
+        XCTAssertTrue(waitForSettingsReadyState(in: app, timeout: 300), app.debugDescription)
+        relaunchIntoWorkspace(in: app)
+        let firstResultCell = app.buttons.matching(identifier: "workspace-result-cell").firstMatch
+        XCTAssertTrue(firstResultCell.waitForExistence(timeout: 60), app.debugDescription)
+        saveScreenshot(named: "05-ready-to-search", in: app, evidenceRoot: evidenceRoot)
+
+        let searchInput = searchInput(in: app)
+        XCTAssertTrue(searchInput.waitForExistence(timeout: 10))
+        clearText(in: searchInput, in: app)
+        pasteText("portrait", into: searchInput, in: app)
+        dismissTextSuggestions(in: app)
+        submitSearch(using: searchInput, in: app)
+
+        XCTAssertTrue(
+            waitForCondition(timeout: 20) {
+                self.visibleResultLabels(in: app).contains { $0.contains("portrait") }
+            },
+            app.debugDescription
+        )
+        saveScreenshot(named: "06-search-portrait", in: app, evidenceRoot: evidenceRoot)
+
+        clearText(in: searchInput, in: app)
+        pasteText("winter", into: searchInput, in: app)
+        dismissTextSuggestions(in: app)
+        submitSearch(using: searchInput, in: app)
+
+        XCTAssertTrue(
+            waitForCondition(timeout: 20) {
+                self.visibleResultLabels(in: app).contains { $0.contains("landscape-winter-") }
+            },
+            app.debugDescription
+        )
+        saveScreenshot(named: "07-search-winter", in: app, evidenceRoot: evidenceRoot)
+
+        let imageQueryURL = selectedFolder.appending(path: "other-cat-01.jpg")
+        XCTAssertTrue(imageQueryURL.fileExists, imageQueryURL.path(percentEncoded: false))
+        clearText(in: searchInput, in: app)
+        pasteImage(fileURL: imageQueryURL, into: searchInput, in: app)
+        XCTAssertTrue(app.staticTexts["Pasted image ready"].waitForExistence(timeout: 5), app.debugDescription)
+        submitSearch(using: searchInput, in: app)
+        XCTAssertTrue(
+            waitForCondition(timeout: 20) {
+                self.firstVisibleResultLabel(in: app) == imageQueryURL.lastPathComponent
+            },
+            app.debugDescription
+        )
+        saveScreenshot(named: "08-image-search", in: app, evidenceRoot: evidenceRoot)
+    }
+
     private func configuredApp(
         runtimeRoot: URL,
         suiteName: String,
@@ -1354,11 +1459,6 @@ final class PhaseAFlowTests: XCTestCase {
     }
 
     private func closeSettingsWindowIfPresent(in app: XCUIApplication) {
-        let settingsWindowPredicate = NSPredicate(
-            format: "identifier == %@ OR title CONTAINS %@",
-            "com_apple_SwiftUI_Settings_window",
-            "Settings"
-        )
         let settingsWindows = app.windows.matching(settingsWindowPredicate)
         guard settingsWindows.count > 0 else {
             if waitForApplicationSurface(in: app, timeout: 1) == false {
@@ -1370,7 +1470,19 @@ final class PhaseAFlowTests: XCTestCase {
         relaunchIntoWorkspace(in: app)
     }
 
-    private func focusEditableElement(_ element: XCUIElement, in app: XCUIApplication) {
+    private var settingsWindowPredicate: NSPredicate {
+        NSPredicate(
+            format: "identifier == %@ OR title CONTAINS %@",
+            "com_apple_SwiftUI_Settings_window",
+            "Settings"
+        )
+    }
+
+    private func settingsWindow(in app: XCUIApplication) -> XCUIElement {
+        app.windows.matching(settingsWindowPredicate).firstMatch
+    }
+
+    func focusEditableElement(_ element: XCUIElement, in app: XCUIApplication) {
         dismissSystemBannersIfNeeded()
         app.activate()
         let focusTarget: XCUIElement
@@ -1605,7 +1717,7 @@ final class PhaseAFlowTests: XCTestCase {
 
 }
 
-private extension URL {
+extension URL {
     var fileExists: Bool {
         FileManager.default.fileExists(atPath: path)
     }

@@ -81,7 +81,7 @@ func libraryDatabaseWaitsForShortLivedWriteLocks() throws {
     _ = try database.upsertFolder(absolutePath: "/tmp/library", bookmarkData: nil, isActive: true)
     let elapsed = Date().timeIntervalSince(start)
     releaseSemaphore.wait()
-    let busyTimeoutMilliseconds = Double(try pragmaValue(named: "busy_timeout", in: databaseURL) ?? "0") ?? 0
+    let busyTimeoutMilliseconds = Double(try pragmaValue(named: "busy_timeout", in: database.handle) ?? "0") ?? 0
     let deadline = (busyTimeoutMilliseconds / 1000.0) + 2.0
 
     #expect(elapsed >= 0.25)
@@ -370,6 +370,30 @@ private func pragmaValue(named name: String, in databaseURL: URL) throws -> Stri
             domain: "LibraryDatabaseTests",
             code: 2,
             userInfo: [NSLocalizedDescriptionKey: "Unable to prepare the database pragma query."]
+        )
+    }
+    defer { sqlite3_finalize(statement) }
+
+    guard sqlite3_step(statement) == SQLITE_ROW else {
+        return nil
+    }
+
+    if let textPointer = sqlite3_column_text(statement, 0) {
+        return String(cString: textPointer)
+    }
+
+    return String(sqlite3_column_int(statement, 0))
+}
+
+private func pragmaValue(named name: String, in handle: OpaquePointer) throws -> String? {
+    var statement: OpaquePointer?
+    let sql = "PRAGMA \(name);"
+    guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK, let statement else {
+        sqlite3_finalize(statement)
+        throw NSError(
+            domain: "LibraryDatabaseTests",
+            code: 5,
+            userInfo: [NSLocalizedDescriptionKey: "Unable to prepare the configured pragma query."]
         )
     }
     defer { sqlite3_finalize(statement) }

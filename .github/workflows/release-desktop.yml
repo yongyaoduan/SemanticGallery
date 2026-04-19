@@ -32,6 +32,7 @@ jobs:
         id: build_dmg
         env:
           SEMANTICGALLERY_BUNDLED_ARTIFACT_SOURCE_ROOT: ${{ runner.temp }}/semanticgallery-artifacts
+          SEMANTICGALLERY_RELEASE_NAME: SemanticGallery-${{ github.ref_name }}
         run: |
           log_path="$(mktemp)"
           ./scripts/build-dmg.sh | tee "$log_path"

@@ -14,7 +14,12 @@ APPICONSET_PATH="$ROOT_DIR/App/SemanticGallery/Assets.xcassets/AppIcon.appiconse
 ARTIFACT_SOURCE_ROOT="${SEMANTICGALLERY_BUNDLED_ARTIFACT_SOURCE_ROOT:-$ROOT_DIR/.cache}"
 APP_ARTIFACTS_PATH="$BUILD_APP_PATH/Contents/Resources/SemanticGalleryArtifacts"
 STAMP="$(date +%Y%m%d-%H%M%S)"
-DMG_PATH="$DIST_DIR/$APP_NAME-$STAMP.dmg"
+RELEASE_NAME="${SEMANTICGALLERY_RELEASE_NAME:-}"
+if [[ -n "$RELEASE_NAME" ]]; then
+  DMG_PATH="$DIST_DIR/$RELEASE_NAME.dmg"
+else
+  DMG_PATH="$DIST_DIR/$APP_NAME-$STAMP.dmg"
+fi
 LATEST_PATH="$DIST_DIR/$APP_NAME-latest.dmg"
 
 create_volume_icon() {

@@ -27,3 +27,6 @@ jobs:
 
       - name: Validate shell scripts
         run: bash -n scripts/*.sh
+
+      - name: Run dmg packaging tests
+        run: bash scripts/test-build-dmg.sh

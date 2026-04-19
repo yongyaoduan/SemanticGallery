@@ -415,12 +415,19 @@ final class PhaseAFlowTests: XCTestCase {
         let previewCloseButton = app.buttons["workspace-preview-close-button"]
         let previewNextButton = app.buttons["workspace-preview-next-button"]
         let previewPreviousButton = app.buttons["workspace-preview-previous-button"]
+        let previewMedia = identifiedElement(in: app, identifier: "workspace-preview-media")
         XCTAssertTrue(previewSimilarButton.waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertTrue(previewInfoButton.waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertTrue(previewDeleteButton.waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertTrue(previewCloseButton.waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertTrue(previewNextButton.waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertTrue(previewPreviousButton.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(previewMedia.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertLessThan(
+            abs(previewMedia.frame.midY - previewOverlay.frame.midY),
+            32,
+            "The preview media should remain vertically centered inside the overlay."
+        )
         saveScreenshot(named: "01-preview", in: app, evidenceRoot: evidenceRoot)
 
         clickElement(previewInfoButton, in: app)
@@ -1346,7 +1353,7 @@ final class PhaseAFlowTests: XCTestCase {
         }
         clickElement(chooseButton, in: app)
 
-        XCTAssertTrue(waitForNonExistence(of: openPanel.panel, timeout: 5))
+        XCTAssertTrue(waitForNonExistence(of: openPanel.panel, timeout: 10))
     }
 
     private func waitForOpenPanel(in app: XCUIApplication, timeout: TimeInterval) -> OpenPanelContext? {

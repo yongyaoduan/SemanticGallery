@@ -5,6 +5,7 @@ on:
   push:
     tags:
       - "desktop-v*"
+      - "*.*.*"
 
 jobs:
   macos-release:
@@ -47,4 +48,24 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
+          name: SemanticGallery ${{ github.ref_name }}
+          body: |
+            ## Highlights
+            - Native Swift macOS desktop build with the current museum-style interface.
+            - Local-first semantic search for one selected folder at a time.
+            - Text search, pasted-image search, image preview, image-to-image search, selection mode, and delete-to-Trash.
+            - Optional private album adaptation that retrains locally and rebuilds the search index.
+
+            ## Install
+            1. Download the dmg and drag `SemanticGallery.app` to `Applications`.
+            2. Open `Applications`, right-click `SemanticGallery`, and choose `Open` on first launch.
+            3. In Settings, choose the folder you want to search.
+            4. Wait for indexing to finish, then return to the usage page and start searching.
+
+            ## Behavior Notes
+            - Search results only come from the folder that is currently selected in Settings.
+            - If the same image exists in multiple folders, SemanticGallery stores one embedding and keeps multiple file paths.
+            - Deleting from search results only moves the file in the current folder to Trash.
+            - Indexing and private adaptation both run locally and can take time on first use.
+            - This release is built for Apple Silicon Macs.
           files: ${{ steps.build_dmg.outputs.dmg_path }}

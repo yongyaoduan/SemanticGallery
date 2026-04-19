@@ -69,31 +69,19 @@ struct WorkspacePreviewOverlay: View {
     @State private var metadata: PreviewMetadata?
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack {
             HStack {
                 previewArrow(systemName: "chevron.left", enabled: canShowPrevious, action: showPrevious)
 
                 Spacer(minLength: 18)
 
-                ZStack {
-                    if let image {
-                        Image(nsImage: image)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(maxWidth: 1180, maxHeight: 760)
-                            .shadow(color: Color.black.opacity(0.28), radius: 26, y: 16)
-                    } else {
-                        ProgressView()
-                            .controlSize(.large)
-                            .tint(.white)
-                            .frame(width: 220, height: 220)
-                    }
-                }
+                previewMediaView
 
                 Spacer(minLength: 18)
 
                 previewArrow(systemName: "chevron.right", enabled: canShowNext, action: showNext)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             .padding(.horizontal, 32)
 
             VStack(alignment: .trailing, spacing: 12) {
@@ -163,6 +151,26 @@ struct WorkspacePreviewOverlay: View {
             }
             metadata = try? PreviewMetadataLoader.load(for: item)
         }
+    }
+
+    private var previewMediaView: some View {
+        ZStack {
+            if let image {
+                Image(nsImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: 1180, maxHeight: 760)
+                    .shadow(color: Color.black.opacity(0.28), radius: 26, y: 16)
+            } else {
+                ProgressView()
+                    .controlSize(.large)
+                    .tint(.white)
+                    .frame(width: 220, height: 220)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Preview Media")
+        .accessibilityIdentifier("workspace-preview-media")
     }
 
     private func previewArrow(systemName: String, enabled: Bool, action: @escaping () -> Void) -> some View {

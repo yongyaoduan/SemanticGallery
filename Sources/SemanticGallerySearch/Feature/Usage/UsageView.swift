@@ -150,36 +150,45 @@ public struct UsageView: View {
             } else if usageState.results.isEmpty {
                 emptyResultsState
             } else {
-                ScrollView {
-                    LazyVGrid(
-                        columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 5),
-                        spacing: 6
-                    ) {
-                        ForEach(usageState.results) { item in
-                            UsageResultCell(
-                                item: item,
-                                isSelected: usageState.isSelected(item.id),
-                                showsSelection: usageState.isSelectionModeEnabled,
-                                thumbnailCache: thumbnailCache
-                            ) {
-                                if usageState.isSelectionModeEnabled {
-                                    toggleSelection(item.id)
-                                } else {
-                                    openPreview(item.id)
+                GeometryReader { geometry in
+                    let availableWidth = geometry.size.width
+                    let thumbnailRequestSize = WorkspaceGridLayout.thumbnailRequestSize(forAvailableWidth: availableWidth)
+
+                    ScrollView {
+                        LazyVGrid(
+                            columns: Array(
+                                repeating: GridItem(.flexible(), spacing: WorkspaceGridLayout.itemSpacing),
+                                count: WorkspaceGridLayout.columnCount
+                            ),
+                            spacing: WorkspaceGridLayout.itemSpacing
+                        ) {
+                            ForEach(usageState.results) { item in
+                                UsageResultCell(
+                                    item: item,
+                                    isSelected: usageState.isSelected(item.id),
+                                    showsSelection: usageState.isSelectionModeEnabled,
+                                    thumbnailCache: thumbnailCache,
+                                    thumbnailSize: thumbnailRequestSize
+                                ) {
+                                    if usageState.isSelectionModeEnabled {
+                                        toggleSelection(item.id)
+                                    } else {
+                                        openPreview(item.id)
+                                    }
                                 }
                             }
                         }
+                        .task(id: thumbnailPrefetchKey(for: availableWidth)) {
+                            await thumbnailCache.prefetchImages(
+                                for: Array(usageState.results.prefix(15)),
+                                size: thumbnailRequestSize,
+                                scale: NSScreen.main?.backingScaleFactor ?? 2
+                            )
+                        }
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("workspace-results-grid")
+                        .padding(.bottom, 12)
                     }
-                    .accessibilityElement(children: .contain)
-                    .accessibilityIdentifier("workspace-results-grid")
-                    .padding(.bottom, 12)
-                }
-                .task(id: thumbnailPrefetchIDs) {
-                    await thumbnailCache.prefetchImages(
-                        for: Array(usageState.results.prefix(15)),
-                        size: CGSize(width: 420, height: 420),
-                        scale: NSScreen.main?.backingScaleFactor ?? 2
-                    )
                 }
             }
         }
@@ -508,6 +517,12 @@ public struct UsageView: View {
 
     private var thumbnailPrefetchIDs: [Int64] {
         Array(usageState.results.prefix(15).map(\.id))
+    }
+
+    private func thumbnailPrefetchKey(for availableWidth: CGFloat) -> String {
+        let resultKey = thumbnailPrefetchIDs.map(String.init).joined(separator: ",")
+        let sizeKey = Int(WorkspaceGridLayout.thumbnailRequestSize(forAvailableWidth: availableWidth).width.rounded())
+        return "\(resultKey)-\(sizeKey)"
     }
 
     private var previewIndex: Int? {

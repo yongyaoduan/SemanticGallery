@@ -69,65 +69,71 @@ struct WorkspacePreviewOverlay: View {
     @State private var metadata: PreviewMetadata?
 
     var body: some View {
-        ZStack {
-            HStack {
-                previewArrow(systemName: "chevron.left", enabled: canShowPrevious, action: showPrevious)
+        GeometryReader { geometry in
+            let stageSize = WorkspacePreviewLayout.mediaStageSize(in: geometry.size)
 
-                Spacer(minLength: 18)
+            ZStack {
+                HStack {
+                    previewArrow(systemName: "chevron.left", enabled: canShowPrevious, action: showPrevious)
 
-                previewMediaView
+                    Spacer(minLength: WorkspacePreviewLayout.arrowSpacing)
 
-                Spacer(minLength: 18)
+                    previewMediaView(stageSize: stageSize)
 
-                previewArrow(systemName: "chevron.right", enabled: canShowNext, action: showNext)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-            .padding(.horizontal, 32)
+                    Spacer(minLength: WorkspacePreviewLayout.arrowSpacing)
 
-            VStack(alignment: .trailing, spacing: 12) {
-                HStack(spacing: 10) {
-                    WorkspaceIconButton(
-                        systemName: "sparkles",
-                        accessibilityLabel: "Search Similar Images"
-                    ) {
-                        searchSimilar()
-                    }
-                    .accessibilityIdentifier("workspace-preview-similar-button")
-
-                    WorkspaceIconButton(
-                        systemName: "info.circle",
-                        accessibilityLabel: "Image Information"
-                    ) {
-                        toggleMetadata()
-                    }
-                    .accessibilityIdentifier("workspace-preview-info-button")
-
-                    WorkspaceIconButton(
-                        systemName: "trash",
-                        accessibilityLabel: "Move Image to Trash",
-                        isDangerous: true
-                    ) {
-                        deleteImage()
-                    }
-                    .accessibilityIdentifier("workspace-preview-delete-button")
-
-                    WorkspaceIconButton(
-                        systemName: "xmark",
-                        accessibilityLabel: "Close Preview"
-                    ) {
-                        closePreview()
-                    }
-                    .accessibilityIdentifier("workspace-preview-close-button")
+                    previewArrow(systemName: "chevron.right", enabled: canShowNext, action: showNext)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+                .padding(.horizontal, WorkspacePreviewLayout.horizontalPadding)
 
-                if isMetadataVisible, let metadata {
-                    previewMetadataPanel(metadata)
-                        .transition(.move(edge: .top).combined(with: .opacity))
+                VStack(alignment: .trailing, spacing: 12) {
+                    HStack(spacing: WorkspacePreviewLayout.controlSpacing) {
+                        WorkspaceIconButton(
+                            systemName: "sparkles",
+                            accessibilityLabel: "Search Similar Images"
+                        ) {
+                            searchSimilar()
+                        }
+                        .accessibilityIdentifier("workspace-preview-similar-button")
+
+                        WorkspaceIconButton(
+                            systemName: "info.circle",
+                            accessibilityLabel: "Image Information"
+                        ) {
+                            toggleMetadata()
+                        }
+                        .accessibilityIdentifier("workspace-preview-info-button")
+
+                        WorkspaceIconButton(
+                            systemName: "trash",
+                            accessibilityLabel: "Move Image to Trash",
+                            isDangerous: true
+                        ) {
+                            deleteImage()
+                        }
+                        .accessibilityIdentifier("workspace-preview-delete-button")
+
+                        WorkspaceIconButton(
+                            systemName: "xmark",
+                            accessibilityLabel: "Close Preview"
+                        ) {
+                            closePreview()
+                        }
+                        .accessibilityIdentifier("workspace-preview-close-button")
+                    }
+
+                    if isMetadataVisible, let metadata {
+                        previewMetadataPanel(metadata)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .padding(WorkspacePreviewLayout.controlPadding)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-            .padding(26)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         .onTapGesture {}
         .task(id: item.id) {
@@ -153,10 +159,12 @@ struct WorkspacePreviewOverlay: View {
         }
     }
 
-    private var previewMediaView: some View {
+    private func previewMediaView(stageSize: CGSize) -> some View {
         ZStack {
+            Color.clear
+
             if let image {
-                let fittedSize = WorkspacePreviewLayout.fittedMediaSize(for: image.size)
+                let fittedSize = WorkspacePreviewLayout.fittedMediaSize(for: image.size, in: stageSize)
                 Image(nsImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
@@ -169,6 +177,7 @@ struct WorkspacePreviewOverlay: View {
                     .frame(width: 220, height: 220)
             }
         }
+        .frame(width: stageSize.width, height: stageSize.height)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Preview Media")
         .accessibilityIdentifier("workspace-preview-media")
@@ -251,14 +260,29 @@ private enum WorkspacePreviewFormatting {
 
 enum WorkspacePreviewLayout {
     static let maxMediaSize = CGSize(width: 1180, height: 760)
+    static let horizontalPadding: CGFloat = 32
+    static let controlPadding: CGFloat = 26
+    static let controlSpacing: CGFloat = 10
+    static let arrowSpacing: CGFloat = 18
 
-    static func fittedMediaSize(for imageSize: CGSize) -> CGSize {
+    static func mediaStageSize(in containerSize: CGSize) -> CGSize {
+        let reservedWidth = horizontalPadding * 2 + (WorkspaceMetrics.buttonSize * 2) + (arrowSpacing * 2)
+        let availableWidth = max(containerSize.width - reservedWidth, 220)
+        let availableHeight = max(containerSize.height, 220)
+
+        return CGSize(
+            width: min(maxMediaSize.width, availableWidth),
+            height: min(maxMediaSize.height, availableHeight)
+        )
+    }
+
+    static func fittedMediaSize(for imageSize: CGSize, in stageSize: CGSize = maxMediaSize) -> CGSize {
         guard imageSize.width > 0, imageSize.height > 0 else {
-            return maxMediaSize
+            return stageSize
         }
 
-        let widthScale = maxMediaSize.width / imageSize.width
-        let heightScale = maxMediaSize.height / imageSize.height
+        let widthScale = stageSize.width / imageSize.width
+        let heightScale = stageSize.height / imageSize.height
         let scale = min(widthScale, heightScale)
 
         return CGSize(
@@ -268,12 +292,43 @@ enum WorkspacePreviewLayout {
     }
 
     static func centeredMediaFrame(containerSize: CGSize, imageSize: CGSize) -> CGRect {
-        let fittedSize = fittedMediaSize(for: imageSize)
+        let fittedSize = fittedMediaSize(for: imageSize, in: mediaStageSize(in: containerSize))
         return CGRect(
             x: (containerSize.width - fittedSize.width) / 2,
             y: (containerSize.height - fittedSize.height) / 2,
             width: fittedSize.width,
             height: fittedSize.height
+        )
+    }
+
+    static func mediaStageFrame(in containerSize: CGSize) -> CGRect {
+        let stageSize = mediaStageSize(in: containerSize)
+        return CGRect(
+            x: (containerSize.width - stageSize.width) / 2,
+            y: (containerSize.height - stageSize.height) / 2,
+            width: stageSize.width,
+            height: stageSize.height
+        )
+    }
+
+    static func fittedMediaFrame(in containerSize: CGSize, imageSize: CGSize) -> CGRect {
+        let stageFrame = mediaStageFrame(in: containerSize)
+        let fittedSize = fittedMediaSize(for: imageSize, in: stageFrame.size)
+        return CGRect(
+            x: stageFrame.minX + ((stageFrame.width - fittedSize.width) / 2),
+            y: stageFrame.minY + ((stageFrame.height - fittedSize.height) / 2),
+            width: fittedSize.width,
+            height: fittedSize.height
+        )
+    }
+
+    static func controlBarFrame(in containerSize: CGSize, controlCount: Int) -> CGRect {
+        let width = (CGFloat(controlCount) * WorkspaceMetrics.buttonSize) + (CGFloat(max(controlCount - 1, 0)) * controlSpacing)
+        return CGRect(
+            x: containerSize.width - controlPadding - width,
+            y: controlPadding,
+            width: width,
+            height: WorkspaceMetrics.buttonSize
         )
     }
 }

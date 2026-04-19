@@ -7,6 +7,7 @@ struct UsageResultCell: View {
     let isSelected: Bool
     let showsSelection: Bool
     let thumbnailCache: ThumbnailCache
+    let thumbnailSize: CGSize
     let action: () -> Void
 
     @State private var image: NSImage?
@@ -48,10 +49,10 @@ struct UsageResultCell: View {
         .accessibilityIdentifier("workspace-result-cell")
         .accessibilityLabel(item.relativePath)
         .accessibilityValue(image == nil ? "thumbnail loading" : "thumbnail loaded")
-        .task(id: item.id) {
+        .task(id: "\(item.id)-\(Int(thumbnailSize.width))x\(Int(thumbnailSize.height))") {
             let loadedImage = await thumbnailCache.cachedImage(
                 for: item,
-                size: CGSize(width: 420, height: 420),
+                size: thumbnailSize,
                 scale: NSScreen.main?.backingScaleFactor ?? 2
             )
             if image == nil {

@@ -22,3 +22,41 @@ func workspacePreviewKeepsPortraitMediaVerticallyCenteredInLargeWindows() {
     #expect(frame.height == 760)
     #expect(abs(frame.midY - 540) < 0.5)
 }
+
+@Test
+func workspacePreviewPinsControlsToTheWindowAndFitsWideImagesInsideTheStage() {
+    /// Formal specification
+    /// Preconditions:
+    ///   1. The caller opens the preview overlay in a 1600×900 window.
+    ///   2. The selected result is a wide image with size 4000×1000.
+    /// Postconditions:
+    ///   1. The media stage remains the fixed caller-visible rectangle inside the preview.
+    ///   2. The fitted media frame stays fully inside that stage.
+    ///   3. The top-right controls stay anchored to the window corner, not to the media frame.
+
+    let containerSize = CGSize(width: 1600, height: 900)
+    let stageFrame = WorkspacePreviewLayout.mediaStageFrame(in: containerSize)
+    let mediaFrame = WorkspacePreviewLayout.fittedMediaFrame(
+        in: containerSize,
+        imageSize: CGSize(width: 4000, height: 1000)
+    )
+    let controlFrame = WorkspacePreviewLayout.controlBarFrame(
+        in: containerSize,
+        controlCount: 4
+    )
+
+    #expect(stageFrame.width == 1180)
+    #expect(stageFrame.height == 760)
+    #expect(stageFrame.midX == 800)
+    #expect(stageFrame.midY == 450)
+
+    #expect(mediaFrame.minX >= stageFrame.minX)
+    #expect(mediaFrame.maxX <= stageFrame.maxX)
+    #expect(mediaFrame.minY >= stageFrame.minY)
+    #expect(mediaFrame.maxY <= stageFrame.maxY)
+    #expect(mediaFrame.width == 1180)
+    #expect(mediaFrame.height == 295)
+
+    #expect(controlFrame.maxX == 1574)
+    #expect(controlFrame.minY == 26)
+}

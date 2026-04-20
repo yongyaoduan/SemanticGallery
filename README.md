@@ -21,7 +21,8 @@ SemanticGallery is a local-first semantic image search app for Apple Silicon. Yo
 1. Download the latest `dmg` from [GitHub Releases](https://github.com/yongyaoduan/SemanticGallery/releases/latest).
 2. Open the disk image and drag `SemanticGallery.app` into `Applications`.
 3. For the first launch, open Finder, locate `SemanticGallery.app`, right-click it, then choose `Open`.
-4. If Gatekeeper shows the security prompt, choose `Open` again. After that, you can launch the app normally.
+4. If Gatekeeper still blocks the app, open `System Settings` -> `Privacy & Security`, scroll down to the `Security` section, click `Open Anyway`, then confirm `Open Anyway` in the dialog.
+5. This extra step is usually only needed the first time. After the first successful launch, you can open the app normally.
 
 The release already bundles the SigLIP2 base files, the published stage-1 checkpoint, and the public adaptation anchor. First launch mainly prepares the local database and app folders.
 

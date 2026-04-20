@@ -60,8 +60,10 @@ jobs:
             ## Install
             1. Download the dmg and drag `SemanticGallery.app` to `Applications`.
             2. Open `Applications`, right-click `SemanticGallery`, and choose `Open` on first launch.
-            3. In Settings, choose the folder you want to search.
-            4. Wait for indexing to finish, then return to the usage page and start searching.
+            3. If macOS still blocks the app, open `System Settings` -> `Privacy & Security`, scroll to the `Security` section, click `Open Anyway`, then confirm `Open Anyway` in the dialog.
+            4. This extra step is usually only needed once.
+            5. In Settings, choose the folder you want to search.
+            6. Wait for indexing to finish, then return to the usage page and start searching.
 
             ## Behavior Notes
             - Search results only come from the folder that is currently selected in Settings.

@@ -438,6 +438,13 @@ final class PhaseAFlowTests: XCTestCase {
             displayedText(of: metadataPathValue).map(normalizePathLikeText),
             normalizePathLikeText(firstAbsolutePath)
         )
+        let capturedLabel = app.staticTexts["CAPTURED"]
+        XCTAssertTrue(capturedLabel.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertLessThan(
+            capturedLabel.frame.minY - metadataPathValue.frame.maxY,
+            28,
+            "The metadata card should keep the path value compact instead of leaving a large blank gap before the next section."
+        )
         saveScreenshot(named: "02-preview-metadata", in: app, evidenceRoot: evidenceRoot)
 
         clickElement(previewCloseButton, in: app)

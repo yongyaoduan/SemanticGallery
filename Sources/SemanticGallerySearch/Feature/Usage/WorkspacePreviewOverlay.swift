@@ -257,6 +257,8 @@ struct SelectableMetadataValue: NSViewRepresentable {
         textView.allowsUndo = false
         textView.isHorizontallyResizable = false
         textView.isVerticallyResizable = false
+        textView.setContentHuggingPriority(.required, for: .vertical)
+        textView.setContentCompressionResistancePriority(.required, for: .vertical)
         textView.textContainerInset = .zero
         textView.textContainer?.lineFragmentPadding = 0
         textView.textContainer?.widthTracksTextView = true
@@ -276,12 +278,24 @@ struct SelectableMetadataValue: NSViewRepresentable {
         textView.identifier = NSUserInterfaceItemIdentifier(accessibilityIdentifier)
         textView.textContainer?.maximumNumberOfLines = lineLimit
         textView.textContainer?.lineBreakMode = truncationMode.lineBreakMode
+        textView.invalidateIntrinsicContentSize()
     }
 }
 
 final class SelectableMetadataTextView: NSTextView {
     override var acceptsFirstResponder: Bool {
         true
+    }
+
+    override var intrinsicContentSize: NSSize {
+        guard let layoutManager, let textContainer else {
+            return super.intrinsicContentSize
+        }
+
+        layoutManager.ensureLayout(for: textContainer)
+        let usedRect = layoutManager.usedRect(for: textContainer)
+        let height = ceil(usedRect.height + (textContainerInset.height * 2))
+        return NSSize(width: NSView.noIntrinsicMetric, height: height)
     }
 
     override func becomeFirstResponder() -> Bool {
@@ -295,6 +309,11 @@ final class SelectableMetadataTextView: NSTextView {
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         selectAll(nil)
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        invalidateIntrinsicContentSize()
     }
 }
 

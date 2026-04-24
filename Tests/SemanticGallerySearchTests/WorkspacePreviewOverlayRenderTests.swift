@@ -93,6 +93,8 @@ func selectableMetadataValueUsesAReadOnlySelectableTextField() throws {
     #expect(textView.drawsBackground == false)
     #expect(textView.textContainer?.maximumNumberOfLines == 2)
     #expect(textView.identifier?.rawValue == "workspace-preview-metadata-path-value")
+    #expect(textView.contentHuggingPriority(for: .vertical) == .required)
+    #expect(textView.contentCompressionResistancePriority(for: .vertical) == .required)
 }
 
 @MainActor
@@ -125,6 +127,79 @@ func selectableMetadataValueCopiesItsRenderedText() throws {
     textView.copy(nil)
 
     #expect(NSPasteboard.general.string(forType: .string) == value)
+}
+
+@MainActor
+@Test
+func selectableMetadataValueKeepsWrappedPathRowsCompact() throws {
+    /// Formal specification
+    /// Preconditions:
+    ///   1. The caller renders a two-line path value inside the preview info card.
+    ///   2. The available width is limited to the metadata card width.
+    /// Postconditions:
+    ///   1. The selectable value reports a compact intrinsic height for two lines of text.
+    ///   2. The caller-visible row does not introduce large blank vertical gaps below the text.
+
+    let hostingView = NSHostingView(
+        rootView: SelectableMetadataValue(
+            text: "/Users/duanyongyao/PythonProjects/phone_pictures/Camera/IMG_20230114_110106.jpg",
+            lineLimit: 2,
+            truncationMode: .middle,
+            accessibilityIdentifier: "workspace-preview-metadata-path-value"
+        )
+        .frame(width: 264)
+    )
+    hostingView.frame = NSRect(x: 0, y: 0, width: 264, height: 160)
+    hostingView.layoutSubtreeIfNeeded()
+
+    let textView = try #require(findTextView(in: hostingView))
+    textView.layoutSubtreeIfNeeded()
+
+    #expect(textView.intrinsicContentSize.height <= 36)
+    #expect(textView.fittingSize.height <= 36)
+}
+
+@MainActor
+@Test
+func metadataRowLayoutKeepsWrappedPathRowsCompactInsideThePanel() throws {
+    /// Formal specification
+    /// Preconditions:
+    ///   1. The caller renders the path row inside the preview info panel.
+    ///   2. The path wraps to two lines at the panel width.
+    /// Postconditions:
+    ///   1. The row height remains close to the label plus two lines of text.
+    ///   2. The row does not stretch vertically and create a large blank gap below the value.
+
+    struct MetadataRowFixture: View {
+        let value: String
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("PATH")
+                    .font(.system(size: 10, weight: .bold))
+                    .tracking(1.1)
+
+                SelectableMetadataValue(
+                    text: value,
+                    lineLimit: 2,
+                    truncationMode: .middle,
+                    accessibilityIdentifier: "workspace-preview-metadata-path-value"
+                )
+                .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+            }
+            .frame(width: 324, alignment: .leading)
+        }
+    }
+
+    let hostingView = NSHostingView(
+        rootView: MetadataRowFixture(
+            value: "/Users/duanyongyao/PythonProjects/phone_pictures/Camera/IMG_20230114_110106.jpg"
+        )
+    )
+    hostingView.frame = NSRect(x: 0, y: 0, width: 324, height: 200)
+    hostingView.layoutSubtreeIfNeeded()
+
+    #expect(hostingView.fittingSize.height <= 56)
 }
 
 @MainActor

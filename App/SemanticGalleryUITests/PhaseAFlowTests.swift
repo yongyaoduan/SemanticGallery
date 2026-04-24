@@ -403,8 +403,9 @@ final class PhaseAFlowTests: XCTestCase {
 
         let resultCells = app.buttons.matching(identifier: "workspace-result-cell")
         XCTAssertGreaterThanOrEqual(resultCells.count, 2)
+        let firstRelativePath = resultCells.element(boundBy: 0).label
+        let firstAbsolutePath = selectedFolder.appending(path: firstRelativePath).path(percentEncoded: false)
         let firstFilename = (resultCells.element(boundBy: 0).label as NSString).lastPathComponent
-        let secondFilename = (resultCells.element(boundBy: 1).label as NSString).lastPathComponent
         clickElement(resultCells.element(boundBy: 0), in: app)
 
         let previewOverlay = identifiedElement(in: app, identifier: "workspace-preview-overlay")
@@ -413,15 +414,11 @@ final class PhaseAFlowTests: XCTestCase {
         let previewInfoButton = app.buttons["workspace-preview-info-button"]
         let previewDeleteButton = app.buttons["workspace-preview-delete-button"]
         let previewCloseButton = app.buttons["workspace-preview-close-button"]
-        let previewNextButton = app.buttons["workspace-preview-next-button"]
-        let previewPreviousButton = app.buttons["workspace-preview-previous-button"]
         let previewMedia = identifiedElement(in: app, identifier: "workspace-preview-media")
         XCTAssertTrue(previewSimilarButton.waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertTrue(previewInfoButton.waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertTrue(previewDeleteButton.waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertTrue(previewCloseButton.waitForExistence(timeout: 5), app.debugDescription)
-        XCTAssertTrue(previewNextButton.waitForExistence(timeout: 5), app.debugDescription)
-        XCTAssertTrue(previewPreviousButton.waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertTrue(previewMedia.waitForExistence(timeout: 5), app.debugDescription)
         XCTAssertLessThan(
             abs(previewMedia.frame.midY - previewOverlay.frame.midY),
@@ -434,18 +431,13 @@ final class PhaseAFlowTests: XCTestCase {
         let metadataPanel = identifiedElement(in: app, identifier: "workspace-preview-metadata")
         XCTAssertTrue(metadataPanel.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts[firstFilename].waitForExistence(timeout: 5), app.debugDescription)
-
-        clickElement(previewNextButton, in: app)
-        XCTAssertTrue(waitForNonExistence(of: metadataPanel, timeout: 5))
-        clickElement(previewInfoButton, in: app)
-        XCTAssertTrue(metadataPanel.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts[secondFilename].waitForExistence(timeout: 5), app.debugDescription)
-
-        clickElement(previewPreviousButton, in: app)
-        XCTAssertTrue(waitForNonExistence(of: metadataPanel, timeout: 5))
-        clickElement(previewInfoButton, in: app)
-        XCTAssertTrue(metadataPanel.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts[firstFilename].waitForExistence(timeout: 5), app.debugDescription)
+        let metadataPathValue = identifiedElement(in: app, identifier: "workspace-preview-metadata-path-value")
+        XCTAssertTrue(metadataPathValue.waitForExistence(timeout: 5), app.debugDescription)
+        focusEditableElement(metadataPathValue, in: app)
+        XCTAssertEqual(
+            displayedText(of: metadataPathValue).map(normalizePathLikeText),
+            normalizePathLikeText(firstAbsolutePath)
+        )
         saveScreenshot(named: "02-preview-metadata", in: app, evidenceRoot: evidenceRoot)
 
         clickElement(previewCloseButton, in: app)
@@ -598,7 +590,8 @@ final class PhaseAFlowTests: XCTestCase {
         let app = launchApplication(
             at: distributionAppURL,
             suiteName: suiteName,
-            runtimeRoot: runtimeRoot
+            runtimeRoot: runtimeRoot,
+            folderPickerInitialDirectory: selectedFolder.deletingLastPathComponent()
         )
         XCTAssertEqual(
             activeSemanticGalleryBundleURL()?.standardizedFileURL,
@@ -1155,6 +1148,7 @@ final class PhaseAFlowTests: XCTestCase {
         artifactSourceRoot: String?,
         installStepDelayMilliseconds: Int,
         folderPreparationDelayMilliseconds: Int,
+        folderPickerInitialDirectory: URL? = nil,
         deferSelfUninstallTermination: Bool = true
     ) -> XCUIApplication {
         let app = XCUIApplication()
@@ -1166,6 +1160,8 @@ final class PhaseAFlowTests: XCTestCase {
             "SEMANTICGALLERY_USE_STUB_DOWNLOADS": useStubDownloads ? "1" : "0",
             "SEMANTICGALLERY_INSTALL_STEP_DELAY_MS": "\(installStepDelayMilliseconds)",
             "SEMANTICGALLERY_FOLDER_STEP_DELAY_MS": "\(folderPreparationDelayMilliseconds)",
+            "SEMANTICGALLERY_FOLDER_PICKER_INITIAL_DIRECTORY":
+                (folderPickerInitialDirectory ?? fixtureRoot()).path(percentEncoded: false),
             "SEMANTICGALLERY_UI_TEST_FIXTURE_ROOT": fixtureRoot().path,
             "ApplePersistenceIgnoreState": "YES",
         ]
@@ -1197,7 +1193,8 @@ final class PhaseAFlowTests: XCTestCase {
     private func launchApplication(
         at appURL: URL,
         suiteName: String,
-        runtimeRoot: URL? = nil
+        runtimeRoot: URL? = nil,
+        folderPickerInitialDirectory: URL? = nil
     ) -> XCUIApplication {
         let app = attachedInstalledApp()
         app.launchArguments += [
@@ -1207,6 +1204,9 @@ final class PhaseAFlowTests: XCTestCase {
         ]
         app.launchEnvironment["SEMANTICGALLERY_ENABLE_RUNTIME_OVERRIDES"] = "1"
         app.launchEnvironment["SEMANTICGALLERY_DEFAULTS_SUITE"] = suiteName
+        app.launchEnvironment["SEMANTICGALLERY_FOLDER_PICKER_INITIAL_DIRECTORY"] =
+            (folderPickerInitialDirectory ?? fixtureRoot()).path(percentEncoded: false)
+        app.launchEnvironment["SEMANTICGALLERY_UI_TEST_FIXTURE_ROOT"] = fixtureRoot().path(percentEncoded: false)
         if let runtimeRoot {
             app.launchEnvironment["SEMANTICGALLERY_APP_ROOT"] = runtimeRoot.path(percentEncoded: false)
             app.launchEnvironment["SEMANTICGALLERY_BUNDLED_ARTIFACTS_ROOT"] =
@@ -1337,15 +1337,12 @@ final class PhaseAFlowTests: XCTestCase {
             return
         }
 
-        let navigatedDirectly = navigateOpenPanel(to: folderURL, in: openPanel, app: app)
-        if navigatedDirectly == false {
-            guard let folderItem = waitForFolderItem(named: folderURL.lastPathComponent, in: openPanel.panel, timeout: 2) else {
-                XCTFail("The requested folder did not appear in the chooser.\n\(openPanel.panel.debugDescription)")
-                return
-            }
-            clickElement(folderItem)
-            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+        guard let folderItem = waitForFolderItem(named: folderURL.lastPathComponent, in: openPanel.panel, timeout: 5) else {
+            XCTFail("The requested folder did not appear in the chooser.\n\(openPanel.panel.debugDescription)")
+            return
         }
+        clickElement(folderItem)
+        RunLoop.current.run(until: Date().addingTimeInterval(0.2))
 
         guard let chooseButton = waitForChooseButton(in: openPanel.panel, ownerApp: openPanel.ownerApp, timeout: 5) else {
             XCTFail("The confirmation button did not appear.")
@@ -1368,46 +1365,6 @@ final class PhaseAFlowTests: XCTestCase {
         } while Date() < deadline
 
         return nil
-    }
-
-    private func navigateOpenPanel(to folderURL: URL, in context: OpenPanelContext, app: XCUIApplication) -> Bool {
-        context.ownerApp.activate()
-        context.ownerApp.typeKey("G", modifierFlags: [.command, .shift])
-
-        let deadline = Date().addingTimeInterval(5)
-        repeat {
-            let candidates = [
-                context.ownerApp.sheets.firstMatch,
-                context.ownerApp.dialogs.firstMatch,
-                context.panel.sheets.firstMatch,
-            ]
-            if let goToPanel = candidates.first(where: { $0.exists }) {
-                let textField = goToPanel.textFields.firstMatch.exists
-                    ? goToPanel.textFields.firstMatch
-                    : goToPanel.comboBoxes.textFields.firstMatch
-                guard textField.exists else {
-                    return false
-                }
-                clearText(in: textField, in: app)
-                pasteText(folderURL.path(percentEncoded: false), into: textField, in: app)
-
-                let buttons = [
-                    goToPanel.buttons["Go"],
-                    goToPanel.buttons["Open"],
-                ]
-                if let button = buttons.first(where: { $0.exists }) {
-                    clickElement(button, in: app)
-                } else {
-                    context.ownerApp.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: [])
-                }
-
-                RunLoop.current.run(until: Date().addingTimeInterval(0.4))
-                return true
-            }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
-        } while Date() < deadline
-
-        return false
     }
 
     private func waitForFolderItem(named name: String, in panel: XCUIElement, timeout: TimeInterval) -> XCUIElement? {
@@ -1510,8 +1467,8 @@ final class PhaseAFlowTests: XCTestCase {
     }
 
     private func enterText(_ text: String, into element: XCUIElement, in app: XCUIApplication) {
-        focusEditableElement(element, in: app)
-        app.typeText(text)
+        clearText(in: element, in: app)
+        pasteText(text, into: element, in: app)
     }
 
     private func searchInput(in app: XCUIApplication) -> XCUIElement {

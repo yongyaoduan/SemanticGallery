@@ -19,6 +19,11 @@ public struct FolderPickerCoordinator {
         environment: [String: String] = ProcessInfo.processInfo.environment,
         fileManager: FileManager = .default
     ) -> URL {
+        if let configuredDirectory = environment["SEMANTICGALLERY_FOLDER_PICKER_INITIAL_DIRECTORY"],
+           configuredDirectory.isEmpty == false {
+            return URL(filePath: configuredDirectory, directoryHint: .isDirectory)
+        }
+
         if let uiTestFixtureRoot = environment["SEMANTICGALLERY_UI_TEST_FIXTURE_ROOT"],
            uiTestFixtureRoot.isEmpty == false {
             return URL(filePath: uiTestFixtureRoot, directoryHint: .isDirectory)

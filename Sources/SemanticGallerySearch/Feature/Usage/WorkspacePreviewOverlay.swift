@@ -221,17 +221,94 @@ struct WorkspacePreviewOverlay: View {
     }
 
     private func metadataRow(label: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+        let lineLimit = label == "Path" ? 2 : 1
+
+        return VStack(alignment: .leading, spacing: 2) {
             Text(label.uppercased())
                 .font(.system(size: 10, weight: .bold))
                 .tracking(1.1)
                 .foregroundStyle(MuseumPaperTheme.mutedInk)
 
-            Text(value)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(MuseumPaperTheme.ink)
-                .lineLimit(label == "Path" ? 2 : 1)
-                .truncationMode(.middle)
+            SelectableMetadataValue(
+                text: value,
+                lineLimit: lineLimit,
+                truncationMode: .middle,
+                accessibilityIdentifier: "workspace-preview-metadata-\(label.lowercased())-value"
+            )
+            .frame(maxWidth: .infinity, minHeight: lineLimit == 1 ? 18 : 36, alignment: .leading)
+        }
+    }
+}
+
+struct SelectableMetadataValue: NSViewRepresentable {
+    let text: String
+    let lineLimit: Int
+    let truncationMode: Text.TruncationMode
+    let accessibilityIdentifier: String
+
+    func makeNSView(context: Context) -> SelectableMetadataTextView {
+        let textView = SelectableMetadataTextView()
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.drawsBackground = false
+        textView.isRichText = false
+        textView.importsGraphics = false
+        textView.usesFindBar = false
+        textView.allowsUndo = false
+        textView.isHorizontallyResizable = false
+        textView.isVerticallyResizable = false
+        textView.textContainerInset = .zero
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.textContainer?.widthTracksTextView = true
+        textView.font = .systemFont(ofSize: 13, weight: .medium)
+        textView.textColor = NSColor(MuseumPaperTheme.ink)
+        textView.identifier = NSUserInterfaceItemIdentifier(accessibilityIdentifier)
+        updateTextView(textView)
+        return textView
+    }
+
+    func updateNSView(_ textView: SelectableMetadataTextView, context: Context) {
+        updateTextView(textView)
+    }
+
+    private func updateTextView(_ textView: SelectableMetadataTextView) {
+        textView.string = text
+        textView.identifier = NSUserInterfaceItemIdentifier(accessibilityIdentifier)
+        textView.textContainer?.maximumNumberOfLines = lineLimit
+        textView.textContainer?.lineBreakMode = truncationMode.lineBreakMode
+    }
+}
+
+final class SelectableMetadataTextView: NSTextView {
+    override var acceptsFirstResponder: Bool {
+        true
+    }
+
+    override func becomeFirstResponder() -> Bool {
+        let didBecomeFirstResponder = super.becomeFirstResponder()
+        if didBecomeFirstResponder {
+            selectAll(nil)
+        }
+        return didBecomeFirstResponder
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        window?.makeFirstResponder(self)
+        selectAll(nil)
+    }
+}
+
+private extension Text.TruncationMode {
+    var lineBreakMode: NSLineBreakMode {
+        switch self {
+        case .head:
+            return .byTruncatingHead
+        case .middle:
+            return .byTruncatingMiddle
+        case .tail:
+            return .byTruncatingTail
+        @unknown default:
+            return .byTruncatingTail
         }
     }
 }

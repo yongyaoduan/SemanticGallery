@@ -1,4 +1,6 @@
+import AppKit
 import CoreGraphics
+import SwiftUI
 import Testing
 @testable import SemanticGallerySearch
 
@@ -59,4 +61,83 @@ func workspacePreviewPinsControlsToTheWindowAndFitsWideImagesInsideTheStage() {
 
     #expect(controlFrame.maxX == 1574)
     #expect(controlFrame.minY == 26)
+}
+
+@MainActor
+@Test
+func selectableMetadataValueUsesAReadOnlySelectableTextField() throws {
+    /// Formal specification
+    /// Preconditions:
+    ///   1. The caller renders a metadata value inside the preview info card.
+    ///   2. The metadata value can span more than one line and may need truncation.
+    /// Postconditions:
+    ///   1. The rendered AppKit control is selectable so the caller can copy it.
+    ///   2. The control remains read-only and borderless.
+    ///   3. The line limit matches the caller-visible metadata layout.
+
+    let hostingView = NSHostingView(
+        rootView: SelectableMetadataValue(
+            text: "/Users/example/Pictures/Folder/File Name.jpg",
+            lineLimit: 2,
+            truncationMode: .middle,
+            accessibilityIdentifier: "workspace-preview-metadata-path-value"
+        )
+        .frame(width: 320)
+    )
+    hostingView.frame = NSRect(x: 0, y: 0, width: 320, height: 60)
+    hostingView.layoutSubtreeIfNeeded()
+
+    let textView = try #require(findTextView(in: hostingView))
+    #expect(textView.isSelectable)
+    #expect(textView.isEditable == false)
+    #expect(textView.drawsBackground == false)
+    #expect(textView.textContainer?.maximumNumberOfLines == 2)
+    #expect(textView.identifier?.rawValue == "workspace-preview-metadata-path-value")
+}
+
+@MainActor
+@Test
+func selectableMetadataValueCopiesItsRenderedText() throws {
+    /// Formal specification
+    /// Preconditions:
+    ///   1. The caller renders a metadata value inside the preview info card.
+    ///   2. The caller clicks the value and requests Copy.
+    /// Postconditions:
+    ///   1. The entire metadata value is selected.
+    ///   2. Copy writes the exact visible string into the general pasteboard.
+
+    let value = "/Users/example/Pictures/Folder/File Name.jpg"
+    let hostingView = NSHostingView(
+        rootView: SelectableMetadataValue(
+            text: value,
+            lineLimit: 2,
+            truncationMode: .middle,
+            accessibilityIdentifier: "workspace-preview-metadata-path-value"
+        )
+        .frame(width: 320, height: 60)
+    )
+    hostingView.frame = NSRect(x: 0, y: 0, width: 320, height: 60)
+    hostingView.layoutSubtreeIfNeeded()
+
+    let textView = try #require(findTextView(in: hostingView))
+    NSPasteboard.general.clearContents()
+    textView.selectAll(nil)
+    textView.copy(nil)
+
+    #expect(NSPasteboard.general.string(forType: .string) == value)
+}
+
+@MainActor
+private func findTextView(in view: NSView) -> NSTextView? {
+    if let textView = view as? NSTextView {
+        return textView
+    }
+
+    for subview in view.subviews {
+        if let textView = findTextView(in: subview) {
+            return textView
+        }
+    }
+
+    return nil
 }
